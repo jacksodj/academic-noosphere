@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Academic Noosphere Phase-0 spike (ticket #7): AgentCore Gateway with IAM
+  inbound auth, plus the Gateway service role allowed to invoke the AWS-owned
+  web-search tool. The web-search connector TARGET (pinned 1.2.0) is attached
+  by scripts/phase0_infra.py after stack create — CloudFormation's
+  McpTargetConfiguration did not clearly document a built-in-connector shape
+  at authoring time; the script checks the live resource schema and will tell
+  you if the target can be folded into this template.
+  Tear down with: scripts/phase0_infra.py down  (deletes target, then stack).
+
+Parameters:
+  GatewayName:
+    Type: String
+    Default: noosphere-phase0
+
+Resources:
+  GatewayServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${GatewayName}-gateway-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: invoke-web-search
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeWebSearch
+                Effect: Allow
+                Action: bedrock-agentcore:InvokeWebSearch
+                Resource: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:aws:tool/web-search.v1"
+
+  Gateway:
+    Type: AWS::BedrockAgentCore::Gateway
+    Properties:
+      Name: !Ref GatewayName
+      ProtocolType: MCP
+      AuthorizerType: AWS_IAM
+      RoleArn: !GetAtt GatewayServiceRole.Arn
+
+Outputs:
+  GatewayId:
+    Value: !GetAtt Gateway.GatewayIdentifier
+  GatewayUrl:
+    Value: !GetAtt Gateway.GatewayUrl
+  ServiceRoleArn:
+    Value: !GetAtt GatewayServiceRole.Arn
