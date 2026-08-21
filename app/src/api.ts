@@ -90,6 +90,23 @@ export function put<T>(path: string, body: unknown): Promise<T> {
   return request<T>("PUT", path, body);
 }
 
+/** GET a text/plain or text/markdown endpoint (e.g. /api/runs/{id}/report.md). */
+export async function getText(path: string): Promise<string> {
+  if (!apiConfig.baseUrl) {
+    throw new ApiError(
+      0,
+      "No core API configured: open with ?port=&token= or set VITE_API_PORT/VITE_API_TOKEN (or VITE_MOCK=1).",
+    );
+  }
+  const res = await fetch(`${apiConfig.baseUrl}${path}`, {
+    headers: { authorization: `Bearer ${apiConfig.token}` },
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `GET ${path}: ${res.statusText}`);
+  }
+  return res.text();
+}
+
 /**
  * Subscribe to a server-sent-events endpoint. Returns an unsubscribe function.
  *

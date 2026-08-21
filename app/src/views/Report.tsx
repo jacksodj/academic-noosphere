@@ -1,36 +1,335 @@
-import type { Gap, IdeonomyExpansion } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { EvidenceChip, WorkChip } from "../components";
+import { expandGap, getExpansions, getReport, getReportMarkdown, listRuns } from "../endpoints";
+import type { Gap, GapKind, GapReport, IdeonomyExpansion, Run, WorkRef } from "../types";
 
-export interface ReportProps {
-  /** Confirmed gaps for the Gap Report, ranked by composite_score. */
-  gaps?: Gap[];
-  /** Labeled speculative sections, keyed off gap_id. */
-  expansions?: IdeonomyExpansion[];
+const GAP_KINDS: GapKind[] = ["structural", "narrative", "temporal"];
+const COMPONENT_ORDER = ["sparsity", "narrative_demand", "recency", "low_citedness"];
+const COMPONENT_LABEL: Record<string, string> = {
+  sparsity: "sparsity",
+  narrative_demand: "narrative demand",
+  recency: "recency",
+  low_citedness: "low citedness",
+};
+
+function ScoreChips({ gap }: { gap: Gap }) {
+  const keys = [
+    ...COMPONENT_ORDER.filter((k) => k in gap.scores),
+    ...Object.keys(gap.scores).filter((k) => !COMPONENT_ORDER.includes(k)),
+  ];
+  return (
+    <div className="chip-row score-chips">
+      <span className="chip chip-composite" title="composite score">
+        composite <strong>{gap.composite_score.toFixed(2)}</strong>
+      </span>
+      {keys.map((k) => (
+        <span key={k} className="chip chip-score" title={`${COMPONENT_LABEL[k] ?? k} component`}>
+          {COMPONENT_LABEL[k] ?? k} {gap.scores[k].toFixed(2)}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /**
- * Gap Report reader (view 3 of 5, ticket #14).
- *
- * TODO(wave 2):
- * - Fetch gaps (/api/gaps?zoom_run_id=…) and expansions (/api/gaps/{id}/expansions).
- * - Interactive reader: citation chips resolving EvidenceItems, evidence filters,
- *   visible component scores, Markdown export.
- * - Ideonomy Expansion rendered as a segregated, clearly-labeled speculative
- *   section with per-idea nearest-work citations and a Re-roll (attempt N+1) action.
+ * Per-gap Ideonomy Expansion panel — collapsed by default; content is
+ * generated speculation, segregated and unmistakably labeled (grounding rule).
  */
-export default function Report({ gaps = [], expansions = [] }: ReportProps) {
+function IdeonomyPanel({ gap, works }: { gap: Gap; works: Record<string, WorkRef> }) {
+  const [open, setOpen] = useState(false);
+  const [expansions, setExpansions] = useState<IdeonomyExpansion[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || expansions !== null) return;
+    getExpansions(gap.gap_id)
+      .then(setExpansions)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  }, [open, expansions, gap.gap_id]);
+
+  async function runExpand() {
+    setBusy(true);
+    setError(null);
+    try {
+      const expansion = await expandGap(gap.gap_id);
+      setExpansions((prev) => [...(prev ?? []), expansion]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const hasExpansions = (expansions?.length ?? 0) > 0;
+
+  return (
+    <div className={`ideonomy ${open ? "ideonomy-open" : ""}`}>
+      <button className="ideonomy-toggle" onClick={() => setOpen((v) => !v)}>
+        <span className="spec-label">SPECULATIVE</span> Ideonomy Expansion
+        <span className="muted"> {open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="ideonomy-body">
+          <p className="spec-banner">
+            Generated speculation — segregated from grounded findings. Each idea cites its nearest
+            existing work; nothing below is a Grounded Claim.
+          </p>
+          {error && <p className="error">{error}</p>}
+          {expansions === null && !error && <p className="muted">Loading expansions…</p>}
+          {expansions !== null && !hasExpansions && (
+            <p className="muted">No expansions yet for this gap.</p>
+          )}
+          {expansions?.map((exp) => (
+            <div key={exp.attempt} className="expansion">
+              <div className="tuple-legend">
+                <span className="muted">attempt {exp.attempt}</span>
+                <span className="chip chip-tuple" title="ideonomic operators">
+                  operators: {exp.tuple.operators.join(" · ")}
+                </span>
+                <span className="chip chip-tuple" title="organon">
+                  {exp.tuple.organon}
+                </span>
+                <span className="chip chip-tuple" title="dimension prompts">
+                  dims: {exp.tuple.dimension_prompts.join(" · ")}
+                </span>
+                <span className="chip chip-tuple mono" title="reproducibility seed">
+                  seed {exp.tuple.seed}
+                </span>
+              </div>
+              <ul className="idea-list">
+                {exp.ideas.map((idea, i) => (
+                  <li key={i} className="idea">
+                    <p>{idea.text}</p>
+                    <div className="chip-row">
+                      {idea.operators.map((op) => (
+                        <span key={op} className="badge op-badge">
+                          {op}
+                        </span>
+                      ))}
+                      <span className="badge organon-badge">{idea.organon_position}</span>
+                      <span className="muted small">nearest work</span>
+                      <WorkChip workId={idea.nearest_work_id} works={works} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {expansions !== null && (
+            <button className="primary" disabled={busy} onClick={() => void runExpand()}>
+              {busy
+                ? "Expanding (Opus)…"
+                : hasExpansions
+                  ? `Re-roll (attempt ${(expansions.at(-1)?.attempt ?? expansions.length) + 1}, Opus)`
+                  : "Expand (Opus)"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Gap Report reader (view 3 of 5, ticket #14). */
+export default function Report() {
+  const [params, setParams] = useSearchParams();
+  const runParam = params.get("run");
+
+  const [runs, setRuns] = useState<Run[] | null>(null);
+  const [report, setReport] = useState<GapReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [kindFilter, setKindFilter] = useState<Set<GapKind>>(new Set(GAP_KINDS));
+  const [showUnconfirmed, setShowUnconfirmed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const zoomRuns = useMemo(
+    () => (runs ?? []).filter((r) => r.phase === "zoom" && r.status === "completed"),
+    [runs],
+  );
+  const runId = runParam ?? zoomRuns[0]?.run_id ?? null;
+
+  useEffect(() => {
+    listRuns()
+      .then(setRuns)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  useEffect(() => {
+    if (!runId) return;
+    setReport(null);
+    getReport(runId)
+      .then((r) => {
+        setReport(r);
+        setError(null);
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  }, [runId]);
+
+  function toggleKind(kind: GapKind) {
+    setKindFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }
+
+  async function exportMarkdown() {
+    if (!runId) return;
+    setExporting(true);
+    try {
+      const md = await getReportMarkdown(runId);
+      const blob = new Blob([md], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gap-report-${runId}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const gaps = useMemo(() => {
+    if (!report) return [];
+    return [...report.gaps]
+      .filter((g) => g.kinds.some((k) => kindFilter.has(k)))
+      .sort((a, b) => b.composite_score - a.composite_score);
+  }, [report, kindFilter]);
+
   return (
     <section>
       <div className="view-head">
         <h1>Gap Report</h1>
+        <div className="view-head-actions">
+          {zoomRuns.length > 0 && (
+            <label className="run-select">
+              <span className="muted">Zoom run</span>
+              <select value={runId ?? ""} onChange={(e) => setParams({ run: e.target.value })}>
+                {zoomRuns.map((r) => (
+                  <option key={r.run_id} value={r.run_id}>
+                    {r.run_id} — {r.whitespace_id ?? "?"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {report && (
+            <button onClick={() => void exportMarkdown()} disabled={exporting}>
+              {exporting ? "Exporting…" : "Export Markdown"}
+            </button>
+          )}
+        </div>
       </div>
-      <div className="card empty-state">
-        <h2>No Gap Report yet</h2>
-        <p>
-          Confirmed gaps with grounded evidence will render here after a Survey
-          completes its zoom passes. ({gaps.length} gaps, {expansions.length}{" "}
-          expansions loaded)
-        </p>
-      </div>
+
+      {error && <p className="error">{error}</p>}
+
+      {runs !== null && zoomRuns.length === 0 && (
+        <div className="card empty-state">
+          <h2>No Gap Report yet</h2>
+          <p>
+            Confirmed gaps with grounded evidence render here after a Survey completes a zoom pass.
+          </p>
+        </div>
+      )}
+
+      {runId && report === null && !error && <p className="muted">Loading report…</p>}
+
+      {report && (
+        <>
+          <p className="report-meta muted">
+            {report.field_name} · generated {new Date(report.generated_at).toLocaleString()} ·{" "}
+            {report.gaps.length} confirmed gap{report.gaps.length === 1 ? "" : "s"}
+          </p>
+
+          <div className="filter-row">
+            <span className="muted small">Evidence kinds:</span>
+            {GAP_KINDS.map((k) => (
+              <button
+                key={k}
+                className={`filter-toggle ${kindFilter.has(k) ? "on" : ""}`}
+                onClick={() => toggleKind(k)}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+
+          {gaps.length === 0 && (
+            <div className="card empty-state">
+              <p>No gaps match the current evidence-kind filter.</p>
+            </div>
+          )}
+
+          {gaps.map((gap, i) => (
+            <article key={gap.gap_id} className="card gap-card">
+              <div className="gap-head">
+                <span className="gap-rank">#{i + 1}</span>
+                <div className="chip-row">
+                  {gap.kinds.map((k) => (
+                    <span key={k} className={`badge gapkind-${k}`}>
+                      {k}
+                    </span>
+                  ))}
+                  <span className="muted mono small">{gap.gap_id}</span>
+                </div>
+              </div>
+              <p className="gap-statement">{gap.statement}</p>
+              <ScoreChips gap={gap} />
+              <div className="chip-row evidence-row">
+                <span className="muted small">Evidence:</span>
+                {gap.evidence.map((item, j) => (
+                  <EvidenceChip key={j} item={item} works={report.works} />
+                ))}
+              </div>
+              {gap.evidence.some((e) => e.quote) && (
+                <ul className="quote-list">
+                  {gap.evidence
+                    .filter((e) => e.quote)
+                    .map((e, j) => (
+                      <li key={j} className="quote">
+                        “{e.quote}”{" "}
+                        {e.work_id && <WorkChip workId={e.work_id} works={report.works} />}
+                      </li>
+                    ))}
+                </ul>
+              )}
+              <IdeonomyPanel gap={gap} works={report.works} />
+            </article>
+          ))}
+
+          {report.examined_not_confirmed.length > 0 && (
+            <div className="card unconfirmed">
+              <button className="ideonomy-toggle" onClick={() => setShowUnconfirmed((v) => !v)}>
+                Examined, not confirmed ({report.examined_not_confirmed.length})
+                <span className="muted"> {showUnconfirmed ? "▾" : "▸"}</span>
+              </button>
+              {showUnconfirmed && (
+                <ul className="unconfirmed-list">
+                  {report.examined_not_confirmed.map((c) => (
+                    <li key={c.whitespace_id}>
+                      <span className="mono">{c.whitespace_id}</span> · {c.description}
+                      {c.not_confirmed_reason && (
+                        <div className="not-confirmed-reason">{c.not_confirmed_reason}</div>
+                      )}
+                      <div className="chip-row">
+                        {c.evidence.map((item, j) => (
+                          <EvidenceChip key={j} item={item} works={report.works} />
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }

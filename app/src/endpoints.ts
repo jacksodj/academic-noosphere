@@ -1,12 +1,32 @@
 /**
  * Typed endpoint helpers over the base client in ./api.ts.
  * Under VITE_MOCK=1 each helper serves fixture data from ./mock.ts instead of
- * hitting the core, so the SPA runs standalone today (endpoints land in wave 2).
+ * hitting the core, so the SPA runs standalone (VITE_MOCK=1 exercises every
+ * endpoint the wave-2 API exposes).
  */
 
-import { apiConfig, get, post, put } from "./api";
-import { mockDelay, mockRuns, mockSettings } from "./mock";
-import type { NewSurveyRequest, Run, Settings } from "./types";
+import { apiConfig, get, getText, post, put, subscribe } from "./api";
+import {
+  mockDelay,
+  mockExpansions,
+  mockReportMarkdown,
+  mockReports,
+  mockRuns,
+  mockSettings,
+  mockSpend,
+  mockWhitespace,
+} from "./mock";
+import type {
+  Gap,
+  GapReport,
+  IdeonomyExpansion,
+  NewSurveyRequest,
+  Run,
+  Settings,
+  SpendSummary,
+  WhitespaceCandidate,
+  ZoomResponse,
+} from "./types";
 
 export function listRuns(): Promise<Run[]> {
   if (apiConfig.mock) return mockDelay(mockRuns);
@@ -43,4 +63,159 @@ export function saveSettings(settings: Settings): Promise<Settings> {
     return mockDelay(mockSettings);
   }
   return put<Settings>("/api/settings", settings);
+}
+
+/** Whitespace Candidates surfaced by a coarse run. */
+export function getWhitespace(runId: string): Promise<WhitespaceCandidate[]> {
+  if (apiConfig.mock) return mockDelay(mockWhitespace[runId] ?? []);
+  return get<WhitespaceCandidate[]>(`/api/runs/${encodeURIComponent(runId)}/whitespace`);
+}
+
+/** Start a bounded zoom pass to confirm/refute a Whitespace Candidate. */
+export function zoomWhitespace(whitespaceId: string, runId: string): Promise<ZoomResponse> {
+  if (apiConfig.mock) {
+    const candidates = mockWhitespace[runId] ?? [];
+    const candidate = candidates.find((c) => c.whitespace_id === whitespaceId);
+    if (!candidate) return Promise.reject(new Error(`unknown whitespace ${whitespaceId}`));
+    candidate.status = "zooming";
+    const run: Run = {
+      run_id: `run-zoom-${Date.now()}`,
+      field_name: mockRuns.find((r) => r.run_id === runId)?.field_name ?? "unknown",
+      phase: "zoom",
+      parent_run_id: runId,
+      whitespace_id: whitespaceId,
+      query_manifest_hash: null,
+      status: "running",
+      started_at: new Date().toISOString(),
+      finished_at: null,
+    };
+    mockRuns.unshift(run);
+    return mockDelay({ run, candidate });
+  }
+  return post<ZoomResponse>(`/api/whitespace/${encodeURIComponent(whitespaceId)}/zoom`, {
+    run_id: runId,
+  });
+}
+
+/** Confirmed gaps produced by a zoom run. */
+export function listGaps(zoomRunId: string): Promise<Gap[]> {
+  if (apiConfig.mock) return mockDelay(mockReports[zoomRunId]?.gaps ?? []);
+  return get<Gap[]>(`/api/gaps?zoom_run_id=${encodeURIComponent(zoomRunId)}`);
+}
+
+/** Existing Ideonomy Expansions for a gap (may be empty; on-demand generation). */
+export function getExpansions(gapId: string): Promise<IdeonomyExpansion[]> {
+  if (apiConfig.mock) return mockDelay(mockExpansions[gapId] ?? []);
+  return get<IdeonomyExpansion[]>(`/api/gaps/${encodeURIComponent(gapId)}/expansions`);
+}
+
+/** Generate a new Ideonomy Expansion (Opus; attempt N+1 = Re-roll). */
+export function expandGap(gapId: string): Promise<IdeonomyExpansion> {
+  if (apiConfig.mock) {
+    const existing = mockExpansions[gapId] ?? (mockExpansions[gapId] = []);
+    const attempt = existing.length + 1;
+    const expansion: IdeonomyExpansion = {
+      gap_id: gapId,
+      attempt,
+      tuple: {
+        operators: ["analogy", "extremization"],
+        organon: "organon of relations",
+        dimension_prompts: ["scale", "actors"],
+        seed: `mock:${gapId}:${attempt}`,
+      },
+      ideas: [
+        {
+          text: `Mock idea (attempt ${attempt}): push the gap's mechanism to an extreme regime and study where it breaks.`,
+          operators: ["extremization"],
+          organon_position: "limit analysis",
+          nearest_work_id: "W4322109876",
+        },
+        {
+          text: `Mock idea (attempt ${attempt}): find the closest analogous mechanism in a neighboring community and port its formalism.`,
+          operators: ["analogy"],
+          organon_position: "relational mapping",
+          nearest_work_id: "W4402998811",
+        },
+      ],
+    };
+    existing.push(expansion);
+    return mockDelay(expansion, 900);
+  }
+  return post<IdeonomyExpansion>(`/api/gaps/${encodeURIComponent(gapId)}/expand`, {});
+}
+
+/** Full interactive Gap Report JSON for a completed zoom run. */
+export function getReport(runId: string): Promise<GapReport> {
+  if (apiConfig.mock) {
+    const report = mockReports[runId];
+    if (!report) return Promise.reject(new Error(`no report for ${runId}`));
+    return mockDelay(report);
+  }
+  return get<GapReport>(`/api/runs/${encodeURIComponent(runId)}/report`);
+}
+
+/** Markdown export of a Gap Report. */
+export function getReportMarkdown(runId: string): Promise<string> {
+  if (apiConfig.mock) return mockDelay(mockReportMarkdown, 150);
+  return getText(`/api/runs/${encodeURIComponent(runId)}/report.md`);
+}
+
+/** Current LLM spend estimate. */
+export function getSpend(): Promise<SpendSummary> {
+  if (apiConfig.mock) return mockDelay(mockSpend, 100);
+  return get<SpendSummary>("/api/spend");
+}
+
+/**
+ * Live spend meter: initial fetch + SSE (/api/events) + slow poll fallback.
+ * Mock mode ticks on an interval instead. Returns an unsubscribe function.
+ */
+export function subscribeSpend(onSpend: (spend: SpendSummary) => void): () => void {
+  let closed = false;
+  const push = (s: SpendSummary) => {
+    if (!closed) onSpend(s);
+  };
+  getSpend().then(push).catch(() => undefined);
+
+  if (apiConfig.mock) {
+    const timer = setInterval(() => {
+      mockSpend.total_usd += 0.03;
+      mockSpend.by_model["anthropic.claude-haiku-4-5"] += 0.03;
+      mockSpend.updated_at = new Date().toISOString();
+      push(structuredClone(mockSpend));
+    }, 5000);
+    return () => {
+      closed = true;
+      clearInterval(timer);
+    };
+  }
+
+  // SSE: any event that carries spend totals updates the meter; other event
+  // types are ignored here (job progress etc. is consumed elsewhere).
+  const unsubscribe = subscribe("/api/events", (ev) => {
+    try {
+      const data: unknown = JSON.parse(ev.data);
+      if (data && typeof data === "object" && "total_usd" in data) {
+        push(data as SpendSummary);
+      } else if (
+        data &&
+        typeof data === "object" &&
+        "spend" in data &&
+        (data as { spend: unknown }).spend &&
+        typeof (data as { spend: unknown }).spend === "object"
+      ) {
+        push((data as { spend: SpendSummary }).spend);
+      }
+    } catch {
+      // non-JSON event; ignore
+    }
+  });
+  const poll = setInterval(() => {
+    getSpend().then(push).catch(() => undefined);
+  }, 30000);
+  return () => {
+    closed = true;
+    unsubscribe();
+    clearInterval(poll);
+  };
 }

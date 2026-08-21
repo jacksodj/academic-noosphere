@@ -119,3 +119,62 @@ export interface NewSurveyRequest {
   field_name: string;
   seed_queries: string[];
 }
+
+/**
+ * Citation-resolution entry in the report JSON `works` table: minimal metadata
+ * for every work id cited anywhere in the report (evidence, ideas, communities).
+ */
+export interface WorkRef {
+  work_id: string;
+  title: string | null;
+  year: number | null;
+  doi: string | null;
+}
+
+/**
+ * Community super-node summary in the report JSON — the Explorer's default
+ * community-map lens is built from this (no dedicated graph endpoint in v1).
+ */
+export interface ReportCommunity {
+  id: number;
+  label: string | null;
+  size: number; // member work count
+  top_topics: string[];
+  works: string[]; // member work ids (top-N by relevance is fine)
+}
+
+/** Inter-community edge, weight = normalized citation/coupling density (0..1). */
+export interface CommunityEdge {
+  source: number;
+  target: number;
+  weight: number;
+}
+
+/**
+ * GET /api/runs/{zoom_run_id}/report — the interactive Gap Report payload.
+ * `communities` + `community_edges` also feed the Graph Explorer lens.
+ */
+export interface GapReport {
+  run_id: string;
+  parent_run_id: string | null;
+  field_name: string;
+  generated_at: string;
+  gaps: Gap[];
+  examined_not_confirmed: WhitespaceCandidate[];
+  works: Record<string, WorkRef>;
+  communities: ReportCommunity[];
+  community_edges: CommunityEdge[];
+}
+
+/** GET /api/spend — running LLM spend estimate (live meter, no auto-stop). */
+export interface SpendSummary {
+  total_usd: number;
+  by_model: Record<string, number>;
+  updated_at: string;
+}
+
+/** POST /api/whitespace/{id}/zoom response: the created zoom Run + updated candidate. */
+export interface ZoomResponse {
+  run: Run;
+  candidate: WhitespaceCandidate;
+}

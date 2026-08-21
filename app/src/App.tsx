@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { apiConfig } from "./api";
+import { subscribeSpend } from "./endpoints";
+import type { SpendSummary } from "./types";
 import Dashboard from "./views/Dashboard";
 import Explorer from "./views/Explorer";
 import Report from "./views/Report";
@@ -14,6 +17,23 @@ const NAV = [
   { to: "/settings", label: "Settings", end: false },
 ];
 
+function SpendMeter() {
+  const [spend, setSpend] = useState<SpendSummary | null>(null);
+
+  useEffect(() => subscribeSpend(setSpend), []);
+
+  const title = spend
+    ? Object.entries(spend.by_model)
+        .map(([model, usd]) => `${model}: $${usd.toFixed(2)}`)
+        .join("\n")
+    : "Estimated LLM spend";
+  return (
+    <span className="spend-meter" title={title}>
+      est. spend <strong>{spend ? `$${spend.total_usd.toFixed(2)}` : "$—"}</strong>
+    </span>
+  );
+}
+
 export default function App() {
   return (
     <div className="shell">
@@ -27,10 +47,7 @@ export default function App() {
           ))}
         </nav>
         <div className="topbar-right">
-          {/* TODO(wave 2): live SpendMeter totals via SSE (/api/spend/events) */}
-          <span className="spend-meter" title="Estimated LLM spend (placeholder)">
-            est. spend <strong>$0.00</strong>
-          </span>
+          <SpendMeter />
           {apiConfig.mock && <span className="badge mock-badge">mock</span>}
         </div>
       </header>

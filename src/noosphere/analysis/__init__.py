@@ -12,4 +12,14 @@ __all__ = [
     "inter_community_edge_density",
     "louvain_communities",
     "pagerank",
+    "composite_score",
+    "confirm_candidate",
+    "detect_whitespace",
+    "mine_narrative",
+    "rank_gaps",
 ]
+
+from noosphere.analysis.confirm import confirm_candidate
+from noosphere.analysis.narrative import mine_narrative
+from noosphere.analysis.ranking import composite_score, rank_gaps
+from noosphere.analysis.whitespace import detect_whitespace
