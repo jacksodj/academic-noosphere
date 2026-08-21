@@ -8,7 +8,9 @@ lives on the wayfinder map (issue #1).
 
 **Survey**:
 One run of the pipeline over a Field: discovery, resolution, graph update, and analysis,
-producing a Gap Report and a Run Snapshot.
+producing a Gap Report and a Run Snapshot. Runs in two phases: a coarse pass over a
+tight core corpus surfaces Whitespace Candidates; bounded zoom passes ingest deeper and
+confirm or refute each at fine grain.
 _Avoid_: crawl, scan, harvest
 
 **Field**:
@@ -21,6 +23,12 @@ _Avoid_: domain, area, subject
 The app's headline output for a Survey: grounded literature gaps with evidence, plus an
 optional Ideonomy Expansion section.
 _Avoid_: analysis, summary
+
+**Whitespace Candidate**:
+A coarse-grained region of the Field flagged as potentially under-explored by Phase-1
+analysis of a Survey's core corpus. Confirmed or refuted at fine grain by a zoom pass;
+only confirmed candidates become gaps in the Gap Report.
+_Avoid_: gap (until confirmed), opportunity
 
 **Structural Gap**:
 A sparse or empty region of a Field's idea-space, computed from the graph (topic
