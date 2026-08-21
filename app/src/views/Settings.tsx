@@ -1,0 +1,107 @@
+import { useEffect, useState } from "react";
+import { apiConfig } from "../api";
+import { getSettings, saveSettings } from "../endpoints";
+import type { Settings as SettingsModel } from "../types";
+
+export default function Settings() {
+  const [settings, setSettings] = useState<SettingsModel | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  function update(patch: Partial<SettingsModel>) {
+    setSaved(false);
+    setSettings((s) => (s ? { ...s, ...patch } : s));
+  }
+
+  function updateWeight(key: string, value: number) {
+    setSaved(false);
+    setSettings((s) =>
+      s ? { ...s, ranking_weights: { ...s.ranking_weights, [key]: value } } : s,
+    );
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!settings) return;
+    setSaving(true);
+    setError(null);
+    try {
+      setSettings(await saveSettings(settings));
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <div className="view-head">
+        <h1>Settings</h1>
+      </div>
+
+      {apiConfig.mock && <p className="badge mock-badge">mock data (VITE_MOCK=1)</p>}
+      {error && <p className="error">{error}</p>}
+      {settings === null && !error && <p className="muted">Loading settings…</p>}
+
+      {settings && (
+        <form className="card form" onSubmit={submit}>
+          <label>
+            AgentCore Gateway URL
+            <input
+              value={settings.gateway_url ?? ""}
+              onChange={(e) => update({ gateway_url: e.target.value || null })}
+              placeholder="https://…gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
+            />
+          </label>
+          <label>
+            AWS region
+            <input
+              value={settings.aws_region}
+              onChange={(e) => update({ aws_region: e.target.value })}
+            />
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.web_search_enabled}
+              onChange={(e) => update({ web_search_enabled: e.target.checked })}
+            />
+            Web Search enabled (narrative-evidence booster)
+          </label>
+
+          <fieldset>
+            <legend>Gap ranking weights</legend>
+            {Object.entries(settings.ranking_weights).map(([key, value]) => (
+              <label key={key}>
+                {key.replace(/_/g, " ")}
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={value}
+                  onChange={(e) => updateWeight(key, Number(e.target.value))}
+                />
+              </label>
+            ))}
+          </fieldset>
+
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            {saved && <span className="muted">Saved.</span>}
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
