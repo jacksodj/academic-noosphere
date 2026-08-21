@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Academic Noosphere Phase-0 spike (ticket #7): AgentCore Gateway with IAM
-  inbound auth, plus the Gateway service role allowed to invoke the AWS-owned
-  web-search tool. The web-search connector TARGET (pinned 1.2.0) is attached
-  by scripts/phase0_infra.py after stack create — CloudFormation's
-  McpTargetConfiguration did not clearly document a built-in-connector shape
-  at authoring time; the script checks the live resource schema and will tell
-  you if the target can be folded into this template.
-  Tear down with: scripts/phase0_infra.py down  (deletes target, then stack).
+  Academic Noosphere Phase-0 spike (ticket #7): AgentCore Gateway (MCP, IAM
+  inbound auth), its service role (InvokeWebSearch on the AWS-owned tool), and
+  a query-runner Lambda that speaks MCP to the Gateway with SigV4 so the spike
+  can be driven entirely through modeled AWS APIs. The web-search connector
+  TARGET is attached by scripts/phase0_infra.py after stack create because the
+  CFN ConnectorSource schema has no Version property and the 1.2.0 pin is
+  load-bearing (verified against the live resource schema, 2026-08-21).
+  Teardown: delete the target, then this stack.
 
 Parameters:
   GatewayName:
@@ -47,6 +47,76 @@ Resources:
       AuthorizerType: AWS_IAM
       RoleArn: !GetAtt GatewayServiceRole.Arn
 
+  QueryRunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${GatewayName}-runner-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: invoke-gateway
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock-agentcore:InvokeGateway
+                Resource: !GetAtt Gateway.GatewayArn
+
+  QueryRunner:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${GatewayName}-runner"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt QueryRunnerRole.Arn
+      Code:
+        ZipFile: |
+          import json,urllib.request,urllib.error,boto3
+          from botocore.auth import SigV4Auth
+          from botocore.awsrequest import AWSRequest
+          C=boto3.Session().get_credentials()
+          def P(u,b,h):
+              d=json.dumps(b)
+              r=AWSRequest(method='POST',url=u,data=d,headers={'Content-Type':'application/json','Accept':'application/json, text/event-stream',**h})
+              SigV4Auth(C,'bedrock-agentcore','us-east-1').add_auth(r)
+              q=urllib.request.Request(u,data=d.encode(),headers=dict(r.headers),method='POST')
+              try:
+                  with urllib.request.urlopen(q,timeout=60) as x:
+                      return dict(x.headers),x.read().decode()
+              except urllib.error.HTTPError as e:
+                  return dict(e.headers),e.read().decode()
+          def J(t):
+              if 'data:' in t:
+                  for L in t.splitlines():
+                      if L.startswith('data:'):t=L[5:].strip()
+              try:return json.loads(t)
+              except Exception:return {"_raw":t[:800]}
+          def handler(e,ctx):
+              u=e['gateway_url'];h={}
+              hd,t=P(u,{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"spike","version":"0"}}},h)
+              s=hd.get('mcp-session-id') or hd.get('Mcp-Session-Id')
+              if s:h={'Mcp-Session-Id':s}
+              P(u,{"jsonrpc":"2.0","method":"notifications/initialized"},h)
+              hd,t=P(u,{"jsonrpc":"2.0","id":1,"method":"tools/list"},h)
+              tl=J(t);names=[x.get('name') for x in tl.get('result',{}).get('tools',[])]
+              tn=next((n for n in names if 'websearch' in n.lower()),names[0] if names else None)
+              out=[]
+              for i,q in enumerate(e['queries']):
+                  a={"query":q,"maxResults":e.get('max_results',10)}
+                  if e.get('include'):a['filters']={'domainFilter':{'include':e['include']}}
+                  hd,t=P(u,{"jsonrpc":"2.0","id":i+2,"method":"tools/call","params":{"name":tn,"arguments":a}},h)
+                  out.append({"q":q,"r":J(t)})
+              return {"tools":names,"results":out}
+
 Outputs:
   GatewayId:
     Value: !GetAtt Gateway.GatewayIdentifier
@@ -54,3 +124,5 @@ Outputs:
     Value: !GetAtt Gateway.GatewayUrl
   ServiceRoleArn:
     Value: !GetAtt GatewayServiceRole.Arn
+  QueryRunnerName:
+    Value: !Ref QueryRunner
