@@ -44,7 +44,8 @@ a Grounded Claim is a bug.
 
 **Run Snapshot**:
 The full set of resolved DOI/OpenAlex IDs a Survey's analysis was computed over — the
-reproducibility artifact every report is linted against.
+reproducibility artifact every report is linted against. Lives beside the graph, not
+in it: the graph records what the literature is; snapshots record what a Survey did.
 _Avoid_: cache, export
 
 **Discovery**:
