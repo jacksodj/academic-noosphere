@@ -13,10 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from noosphere.api.routes import router
+from noosphere.api.routes import events, router
 from noosphere.api.state import AppState, EventBus, settings_to_dict
 from noosphere.config import CRED_KEYS, Settings
 from noosphere.models import (
@@ -180,12 +180,17 @@ def test_zoom_creates_linked_run_and_job(client: TestClient, state: AppState) ->
 
     r = client.post("/api/whitespace/ws-1/zoom", json={"run_id": "run-1"})
     assert r.status_code == 200
-    zoom = r.json()
+    body = r.json()
+    zoom = body["run"]
     assert zoom["phase"] == "zoom"
     assert zoom["parent_run_id"] == "run-1"
     assert zoom["whitespace_id"] == "ws-1"
     assert zoom["field_name"] == "memory for AI agents"
     assert state.sidecar.get_run(zoom["run_id"]) is not None
+    # SPA contract: candidate returned flipped to "zooming" and persisted so.
+    assert body["candidate"]["status"] == "zooming"
+    persisted = state.sidecar.list_whitespace("run-1")[0]
+    assert persisted.status == "zooming"
 
     jobs = [j for j in state.sidecar.jobs_pending() if j["kind"] == "zoom_survey"]
     assert len(jobs) == 1
@@ -282,6 +287,30 @@ def test_report_501_until_reports_module_lands(
     assert client.get("/api/runs/run-1/report.md").status_code == 501
 
 
+@pytest.mark.skipif(not REPORTS_BUILT, reason="noosphere.reports not built yet")
+def test_report_roundtrip(client: TestClient, state: AppState) -> None:
+    state.sidecar.create_run(
+        make_run(
+            "zoom-1",
+            phase=RunPhase.ZOOM,
+            parent_run_id="run-1",
+            whitespace_id="ws-1",
+        )
+    )
+    state.sidecar.put_gap(make_gap("gap-1", "ws-1", "zoom-1"))
+
+    r = client.get("/api/runs/zoom-1/report")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["run"]["run_id"] == "zoom-1"
+    assert [g["gap_id"] for g in body["gaps"]] == ["gap-1"]
+
+    md = client.get("/api/runs/zoom-1/report.md")
+    assert md.status_code == 200
+    assert md.headers["content-type"].startswith("text/markdown")
+    assert "gap" in md.text.lower()
+
+
 # -- spend -------------------------------------------------------------------
 
 
@@ -319,10 +348,30 @@ async def test_event_bus_fanout() -> None:
     assert bus._queues == set()
 
 
-def test_events_endpoint_serves_sse_headers(client: TestClient) -> None:
-    with client.stream("GET", "/api/events") as r:
-        assert r.status_code == 200
-        assert r.headers["content-type"].startswith("text/event-stream")
+async def test_events_endpoint_streams_bus_events(state: AppState) -> None:
+    # TestClient cannot close an infinite SSE stream, so drive the endpoint
+    # coroutine directly with a bare Request.
+    app = FastAPI()
+    app.state.noosphere = state
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/events",
+        "headers": [],
+        "query_string": b"",
+        "app": app,
+    }
+    response = await events(Request(scope, receive=lambda: asyncio.Future()))
+    assert response.media_type == "text/event-stream"
+
+    body = response.body_iterator
+    first = asyncio.create_task(anext(body))
+    await asyncio.sleep(0.05)  # let the generator attach to the bus
+    state.bus.publish({"type": "ping"})
+    chunk = await asyncio.wait_for(first, timeout=2.0)
+    assert chunk == 'data: {"type": "ping"}\n\n'
+    await body.aclose()
+    assert state.bus._queues == set()
 
 
 def test_survey_event_published(client: TestClient, state: AppState) -> None:

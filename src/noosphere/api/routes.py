@@ -7,10 +7,9 @@ them to ``state.queue.worker({"coarse_survey": ..., "zoom_survey": ...,
 "expand_gap": ...})`` at startup. This module only enqueues those job kinds.
 
 Report endpoints lazy-import ``noosphere.reports.gaps`` (built in parallel)
-and answer 501 until it exists; expected interface:
-``report_json(sidecar, run_id) -> dict`` and
-``report_markdown(sidecar, run_id) -> str``
-(``build_report`` / ``render_markdown`` accepted as alternate names).
+and answer 501 until it provides
+``assemble_report(run_id, sidecar, graph, weights) -> dict`` and
+``to_markdown(report) -> str``.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -115,13 +114,16 @@ async def list_whitespace(request: Request, run_id: str) -> list[WhitespaceCandi
 @router.post("/whitespace/{whitespace_id}/zoom")
 async def zoom_whitespace(
     request: Request, whitespace_id: str, req: ZoomRequest
-) -> Run:
+) -> dict:
     state = _state(request)
     parent = state.sidecar.get_run(req.run_id)
     if parent is None:
         raise HTTPException(status_code=404, detail=f"run {req.run_id!r} not found")
     candidates = state.sidecar.list_whitespace(req.run_id)
-    if not any(w.whitespace_id == whitespace_id for w in candidates):
+    candidate = next(
+        (w for w in candidates if w.whitespace_id == whitespace_id), None
+    )
+    if candidate is None:
         raise HTTPException(
             status_code=404,
             detail=f"whitespace {whitespace_id!r} not found on run {req.run_id!r}",
@@ -154,7 +156,9 @@ async def zoom_whitespace(
             "job_id": job_id,
         }
     )
-    return run
+    candidate.status = "zooming"
+    state.sidecar.put_whitespace(candidate)
+    return {"run": run, "candidate": candidate}
 
 
 # -- gaps & expansions -------------------------------------------------------
@@ -196,7 +200,7 @@ async def expand_gap(request: Request, gap_id: str) -> dict[str, str]:
 # -- reports -----------------------------------------------------------------
 
 
-def _report_fn(*names: str) -> Callable[..., Any]:
+def _reports_module() -> Any:
     try:
         from noosphere.reports import gaps as reports_gaps
     except ImportError as exc:
@@ -204,39 +208,37 @@ def _report_fn(*names: str) -> Callable[..., Any]:
             status_code=501,
             detail=f"report generation not built yet (noosphere.reports.gaps unavailable: {exc})",
         )
-    for name in names:
-        if (fn := getattr(reports_gaps, name, None)) is not None:
-            return fn
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "noosphere.reports.gaps present but exposes none of "
-            f"{names!r}; report endpoint not wired"
-        ),
-    )
+    for name in ("assemble_report", "to_markdown"):
+        if not hasattr(reports_gaps, name):
+            raise HTTPException(
+                status_code=501,
+                detail=f"noosphere.reports.gaps lacks {name}(); report endpoint not wired",
+            )
+    return reports_gaps
 
 
-def _require_run(state: AppState, run_id: str) -> Run:
-    run = state.sidecar.get_run(run_id)
-    if run is None:
+def _assemble_report(state: AppState, run_id: str) -> dict:
+    if state.sidecar.get_run(run_id) is None:
         raise HTTPException(status_code=404, detail=f"run {run_id!r} not found")
-    return run
+    reports_gaps = _reports_module()
+    return reports_gaps.assemble_report(
+        run_id, state.sidecar, state.graph, state.settings.ranking_weights
+    )
 
 
 @router.get("/runs/{run_id}/report")
 async def run_report(request: Request, run_id: str) -> dict:
-    state = _state(request)
-    _require_run(state, run_id)
-    fn = _report_fn("report_json", "build_report")
-    return fn(state.sidecar, run_id)
+    return _assemble_report(_state(request), run_id)
 
 
 @router.get("/runs/{run_id}/report.md")
 async def run_report_markdown(request: Request, run_id: str) -> PlainTextResponse:
     state = _state(request)
-    _require_run(state, run_id)
-    fn = _report_fn("report_markdown", "render_markdown")
-    return PlainTextResponse(fn(state.sidecar, run_id), media_type="text/markdown")
+    report = _assemble_report(state, run_id)
+    reports_gaps = _reports_module()
+    return PlainTextResponse(
+        reports_gaps.to_markdown(report), media_type="text/markdown"
+    )
 
 
 # -- spend & events ----------------------------------------------------------

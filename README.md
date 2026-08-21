@@ -4,9 +4,25 @@ A local macOS app for a single researcher that surveys an academic field, builds
 author/topic/citation graph from scholarly APIs, surfaces literature gaps, and
 recommends co-authors.
 
-## Status: planning (wayfinding)
+## Status: building (v1)
 
-This effort is being planned as a **wayfinder map** on the issue tracker:
+Planning is complete — every decision ticket on the wayfinder map is resolved
+(`docs/architecture.md` is the locked spec, `docs/phase0-results.md` the spike
+evidence). The v1 implementation now lives in this repo:
+
+- **Python core** (`src/noosphere/`): survey pipeline (two-phase, resumable),
+  LadybugDB graph + DuckDB sidecar, gap analysis, ideonomy engine, Bedrock LLM
+  layer, localhost FastAPI (`uv run noosphere-core` prints a
+  `{"port":…,"token":…}` handshake line).
+- **SPA** (`app/`): React/TS — dashboard, whitespace triage, gap-report reader,
+  sigma community explorer, settings. Dev: `cd app && npm install && npm run
+  dev` (connect with `?port=&token=` from the handshake, or `VITE_MOCK=1` for
+  fixture mode).
+- **Tests**: `uv run --group dev pytest` (136 tests).
+- Optional extras: `uv sync --extra embed` (SPECTER2 local embeddings),
+  `--extra websearch` (AgentCore Gateway discovery client).
+
+The wayfinder map remains the decision record:
 
 - **Map**: [Wayfinder map: Academic Noosphere — Mac-local research mapping app](https://github.com/jacksodj/academic-noosphere/issues/1)
 - Open decision tickets are the map's child issues. A ticket is on the **frontier**

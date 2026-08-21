@@ -74,6 +74,85 @@ def _collect_gaps(run: Run, sidecar: Any) -> list[Gap]:
     return [g for zid in zoom_ids for g in sidecar.list_gaps(zid)]
 
 
+MAX_COMMUNITY_WORKS = 30  # per-community drill-in cap for the report's works index
+
+
+def _communities_block(run_id: str, sidecar: Any, graph: Any) -> tuple[dict, list, list]:
+    """Community map for the Explorer lens: (works_index, communities, edges).
+
+    Best-effort — a report without communities is still a valid report.
+    """
+    try:
+        from noosphere.analysis.algos import (
+            inter_community_edge_density,
+            louvain_communities,
+        )
+        ids = set(sidecar.get_run_works(run_id))
+        if not ids:
+            return {}, [], []
+        edges = graph.citation_edges(within=ids)
+        communities = louvain_communities(edges, ids)
+        topic_names = {row[0]: row[1] for row in graph.query(
+            "MATCH (t:Topic) RETURN t.openalex_id, t.display_name")}
+        by_comm: dict[int, list[str]] = {}
+        for wid, cid in communities.items():
+            by_comm.setdefault(cid, []).append(wid)
+        topic_rows = [r for r in graph.work_topic_rows() if r[0] in ids]
+        comm_topics: dict[int, dict[str, float]] = {}
+        for wid, tid, score in topic_rows:
+            cid = communities.get(wid)
+            if cid is not None:
+                comm_topics.setdefault(cid, {})
+                comm_topics[cid][tid] = comm_topics[cid].get(tid, 0.0) + score
+        comm_list = []
+        works_index: dict[str, dict] = {}
+        for cid, members in sorted(by_comm.items()):
+            top = sorted(comm_topics.get(cid, {}).items(), key=lambda kv: -kv[1])[:3]
+            top_names = [topic_names.get(tid, tid) for tid, _ in top]
+            shown = sorted(members)[:MAX_COMMUNITY_WORKS]
+            for wid in shown:
+                works_index.setdefault(wid, {})
+            comm_list.append({
+                "id": cid,
+                "label": top_names[0] if top_names else f"Community {cid}",
+                "size": len(members),
+                "top_topics": top_names,
+                "works": shown,
+            })
+        density = inter_community_edge_density(edges, communities)
+        max_d = max(density.values(), default=0.0) or 1.0
+        comm_edges = [
+            {"source": a, "target": b, "weight": round(d / max_d, 4)}
+            for (a, b), d in sorted(density.items())
+            if d > 0
+        ]
+        return works_index, comm_list, comm_edges
+    except Exception:
+        return {}, [], []
+
+
+def _fill_works_index(index: dict[str, dict], gap_dicts: list[dict], graph: Any) -> dict:
+    """Resolve every cited work id (evidence, ideas, community members) to
+    {work_id, title, year, doi} for the SPA's citation-chip hover cards."""
+    for body in gap_dicts:
+        for ev in body.get("evidence", []):
+            if ev.get("work_id"):
+                index.setdefault(ev["work_id"], {})
+        for exp in body.get("expansions", []):
+            for idea in exp.get("ideas", []):
+                if idea.get("nearest_work_id"):
+                    index.setdefault(idea["nearest_work_id"], {})
+    resolved: dict[str, dict] = {}
+    for wid in index:
+        work = graph.get_work(wid)
+        if work is not None:
+            resolved[wid] = {"work_id": wid, "title": work.title,
+                             "year": work.year, "doi": work.doi}
+        else:
+            resolved[wid] = {"work_id": wid, "title": None, "year": None, "doi": None}
+    return resolved
+
+
 def assemble_report(run_id: str, sidecar: Any, graph: Any, weights: dict) -> dict:
     """Assemble the Gap Report for a run (zoom run: its gaps; coarse run: gaps
     from all its zoom runs). JSON-able throughout."""
@@ -105,8 +184,13 @@ def assemble_report(run_id: str, sidecar: Any, graph: Any, weights: dict) -> dic
         if w.status == "not_confirmed"
     ]
 
+    works_index, communities, community_edges = _communities_block(run_id, sidecar, graph)
+
     return {
         "field": run.field_name,
+        "works": _fill_works_index(works_index, gap_dicts, graph),
+        "communities": communities,
+        "community_edges": community_edges,
         "run": {
             "run_id": run.run_id,
             "phase": run.phase.value,
