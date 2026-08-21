@@ -16,9 +16,11 @@ export default function Dashboard() {
   const [submitting, setSubmitting] = useState(false);
 
   const refresh = useCallback(() => {
-    setError(null);
     listRuns()
-      .then(setRuns)
+      .then((rs) => {
+        setRuns(rs);
+        setError(null);
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 

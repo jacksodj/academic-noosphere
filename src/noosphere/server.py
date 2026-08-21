@@ -22,9 +22,11 @@ _token: str = ""
 
 @app.middleware("http")
 async def require_token(request: Request, call_next):
-    if not secrets.compare_digest(
-        request.headers.get("authorization", ""), f"Bearer {_token}"
-    ):
+    # EventSource can't set headers, so SSE clients pass ?token= instead.
+    presented = request.headers.get("authorization", "")
+    if not presented and (qt := request.query_params.get("token")):
+        presented = f"Bearer {qt}"
+    if not secrets.compare_digest(presented, f"Bearer {_token}"):
         return JSONResponse({"detail": "missing or invalid token"}, status_code=401)
     return await call_next(request)
 

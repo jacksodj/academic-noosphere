@@ -1,32 +1,28 @@
-# React + TypeScript + Vite
+# Academic Noosphere SPA
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Vite + React + TypeScript front end for the noosphere core (localhost FastAPI).
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm install
+VITE_MOCK=1 npm run dev        # standalone, fixture data (no core needed)
+npm run dev                    # against a running core: set VITE_API_PORT / VITE_API_TOKEN
+npm run build                  # tsc -b && vite build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+In the Tauri shell the core's stdout handshake (`{"port":…,"token":…}`) is passed
+to the SPA as `?port=&token=` URL params; env vars are the dev fallback
+(`src/api.ts`).
+
+## Notes for the integrator
+
+- **SSE auth**: `subscribe()` in `src/api.ts` sends the bearer token as a
+  `?token=` query param because EventSource cannot set headers — the core's
+  auth middleware must accept `?token=` on SSE endpoints.
+- Expected wave-2 endpoints: `GET /api/runs`, `POST /api/surveys`
+  (`{field_name, seed_queries}`), `GET/PUT /api/settings` (mirror of
+  `noosphere.config.Settings`).
+- `src/types.ts` mirrors `src/noosphere/models.py` (snake_case as-is; datetimes
+  as ISO strings).
+- Sigma.js/graphology are intentionally not installed until wave 2 (Explorer).

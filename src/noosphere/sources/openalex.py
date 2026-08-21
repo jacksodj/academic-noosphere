@@ -1,8 +1,8 @@
 """OpenAlex client — Resolution's primary scholarly API (system of record).
 
 Every request goes through the sidecar's immutable response cache first
-(key = sha256 of "openalex:" + full URL with sorted params); on a hit no HTTP
-request is made. All OpenAlex IDs are stored in short form ("W2741809807"),
+(key = sha256 of "openalex:" + URL with sorted params, credentials excluded);
+on a hit no HTTP request is made. All OpenAlex IDs are stored in short form ("W2741809807"),
 DOIs as bare DOIs, and every parsed record carries Provenance.
 """
 
@@ -98,19 +98,24 @@ class OpenAlexClient:
     async def __aexit__(self, *exc: object) -> None:
         await self.aclose()
 
-    def _url(self, path: str, params: dict[str, Any]) -> str:
+    def _url(self, path: str, params: dict[str, Any], *, with_auth: bool) -> str:
+        # Credentials never enter the cache key or the persisted URL: a key
+        # rotation must not invalidate the immutable cache, and key material
+        # must never land in the sidecar DB (BYO-credentials rule, #8).
         merged = dict(params)
-        if self._api_key:
-            merged["api_key"] = self._api_key
-        if self._mailto:
-            merged["mailto"] = self._mailto
+        if with_auth:
+            if self._api_key:
+                merged["api_key"] = self._api_key
+            if self._mailto:
+                merged["mailto"] = self._mailto
         query = urlencode(sorted((k, str(v)) for k, v in merged.items()))
         return f"{BASE_URL}{path}?{query}" if query else f"{BASE_URL}{path}"
 
     async def _get_json(self, path: str, params: dict[str, Any]) -> dict | None:
         """Cache-first GET. Returns parsed JSON, or None on HTTP 404."""
-        url = self._url(path, params)
-        key = cache_key(url)
+        url = self._url(path, params, with_auth=True)
+        clean_url = self._url(path, params, with_auth=False)
+        key = cache_key(clean_url)
         cached = self._sidecar.cache_get(key)
         if cached is not None:
             return json.loads(cached)
@@ -130,7 +135,7 @@ class OpenAlexClient:
             return None
         resp.raise_for_status()
         body = resp.text
-        self._sidecar.cache_put(key, "openalex", url, body)
+        self._sidecar.cache_put(key, "openalex", clean_url, body)
         return json.loads(body)
 
     @staticmethod
