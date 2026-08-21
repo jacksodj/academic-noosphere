@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node / React SPA
+node_modules/
+dist/
+
+# Tauri
+src-tauri/target/
+
+# Spike + local data
+phase0_results.jsonl
+*.jsonl
+data/
+*.db
+
+# Env / secrets
+.env
+.env.*
+
+# OS
+.DS_Store
