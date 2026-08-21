@@ -58,10 +58,32 @@ local credential chain (IAM Identity Center SSO profile). [#5]
   latentwill/ideonomy-skill, applied by the app's LLM to selected gaps,
   rendered as a labeled speculative section of the Gap Report. Design in #15.
 
-## Open (blocked) decisions
+- **Two-phase Survey** — coarse core (~5–10k works, seed-and-expand, relevance =
+  topic + embedding similarity only; low-citedness is a gap *signal*, never a
+  filter) surfaces Whitespace Candidates; bounded zoom passes confirm each via
+  three checks (sparsity-at-depth, narrative demand, temporal profile), with
+  unconfirmed candidates reported as "examined, not confirmed". Composite gap
+  ranking with visible component scores. [#11, #12]
+- **Narrative evidence** — corpus-first (abstracts + S2 citation contexts);
+  Web Search snippet mining is an additive stream toggled by the Phase-0 spike
+  verdict. [#12]
+- **UI** — five views: dashboard, whitespace triage, interactive Gap Report
+  reader (citation chips, evidence filters, Markdown export), graph explorer
+  (Sigma.js + graphology, community-map default lens with drill-in),
+  settings/first-run. [#14]
+- **Ideonomy engine** — vendored catalog (pinned upstream commit, sync script);
+  seeded Python picker (run+gap+attempt — reproducible; Re-roll = attempt N+1);
+  structured-JSON expansion contract with per-idea operator provenance and
+  nearest-work citation; on-demand per confirmed Gap. [#15]
+- **BYO credentials** — AWS profile + scholarly API keys are per-user runtime
+  config in the Keychain; nothing credential-shaped in the repo or a build.
+  AUP: narrow reading adopted, risk accepted. [#6, #8]
 
-Graph schema (#9, awaits AUP answer #6) · Ingestion & caching (#11, awaits keys
-#8) · Gap-analysis design (#12, awaits spike #7 + #9) · UI & graph viz (#14,
-awaits #9) · Ideonomy design (#15, awaits #12).
+## Status
+
+**All decision tickets resolved (2026-08-21) — the spec is build-ready.** The
+Phase-0 spike (#7, `scripts/phase0_infra.py` + `scripts/phase0_spike.py`) runs
+as a config-toggle input for Web Search narrative mining. Remaining fog items
+on the map are implementation-time detail.
 
 Vocabulary: see `CONTEXT.md`. Source-document constraints: `docs/reference-notes.md`.
