@@ -460,14 +460,20 @@ class SurveyService:
             f"Persist: parsed {len(all_works)} works "
             f"({len(authors)} authors, {len(topics)} topics, {len(citations)} citation edges)"
         )
-        self._graph.init_schema()
+        # All graph mutations run via to_thread: a single HNSW upsert chunk
+        # blocks for tens of seconds, and on the event loop that freezes every
+        # API request (observed as "the app stopped refreshing"). The worker
+        # is the only graph writer; concurrent readers (report endpoint) go
+        # through Ladybug's own scheduler.
+        await asyncio.to_thread(self._graph.init_schema)
         # Work nodes carry the embeddings — HNSW insertion makes this the slow
-        # phase (tens of minutes for a full corpus). Chunked with awaits in
-        # between so the API/SSE stay alive, plus count + ETA like the embed
-        # stage.
+        # phase (tens of minutes for a full corpus). Chunked for progress
+        # reporting, plus count + ETA like the embed stage.
         started = time.monotonic()
         for i in range(0, len(all_works), PERSIST_BATCH):
-            self._graph.upsert_works(all_works[i : i + PERSIST_BATCH])
+            await asyncio.to_thread(
+                self._graph.upsert_works, all_works[i : i + PERSIST_BATCH]
+            )
             completed = min(i + PERSIST_BATCH, len(all_works))
             elapsed = time.monotonic() - started
             rate = completed / elapsed if elapsed > 0 else 0.0
@@ -481,20 +487,21 @@ class SurveyService:
                     {"stage": "persist", "step": "work nodes",
                      "done": completed, "total": len(all_works), "eta_s": eta_s}
                 )
-            await asyncio.sleep(0)  # let queued API requests run
         self._note("Persist: work nodes written")
-        self._graph.upsert_authors(list(authors.values()))
-        self._graph.upsert_topics(list(topics.values()))
-        self._graph.upsert_sources(list(sources.values()))
-        self._graph.upsert_institutions(list(institutions.values()))
+        await asyncio.to_thread(self._graph.upsert_authors, list(authors.values()))
+        await asyncio.to_thread(self._graph.upsert_topics, list(topics.values()))
+        await asyncio.to_thread(self._graph.upsert_sources, list(sources.values()))
+        await asyncio.to_thread(self._graph.upsert_institutions, list(institutions.values()))
         self._note("Persist: author/topic/source/institution nodes written")
-        self._graph.add_authorships(authorships)
-        self._graph.add_work_topics(work_topics)
+        await asyncio.to_thread(self._graph.add_authorships, authorships)
+        await asyncio.to_thread(self._graph.add_work_topics, work_topics)
         # Citation edges dominate persist wall-clock (observed 17min for 40k
         # edges) — chunked with awaits + ETA like the work nodes above.
         started = time.monotonic()
         for i in range(0, len(citations), CITATION_BATCH):
-            self._graph.add_citations(citations[i : i + CITATION_BATCH])
+            await asyncio.to_thread(
+                self._graph.add_citations, citations[i : i + CITATION_BATCH]
+            )
             completed = min(i + CITATION_BATCH, len(citations))
             elapsed = time.monotonic() - started
             rate = completed / elapsed if elapsed > 0 else 0.0
@@ -508,9 +515,8 @@ class SurveyService:
                     {"stage": "persist", "step": "citation edges",
                      "done": completed, "total": len(citations), "eta_s": eta_s}
                 )
-            await asyncio.sleep(0)
         self._note(f"Persist: {len(citations)} citation edges written")
-        self._add_published_in(published_in)
+        await asyncio.to_thread(self._add_published_in, published_in)
         self._sidecar.add_run_works(run.run_id, kept)
         self._note("Persist: run snapshot recorded")
 

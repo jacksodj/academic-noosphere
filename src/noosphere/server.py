@@ -94,7 +94,12 @@ def _build_handlers(state: AppState) -> dict:
             raise ValueError(f"unknown run {payload['run_id']}")
         note_missing_credentials(run.run_id)
         await make_service().run_coarse(run, payload["seed_queries"], checkpoint)
-        candidates = detect_whitespace(run.run_id, state.graph, state.sidecar)
+        note_activity(run.run_id, "Detecting whitespace (community structure + thin cells)")
+        # Pure compute over graph reads (Louvain etc.) — off-loop like persist.
+        candidates = await asyncio.to_thread(
+            detect_whitespace, run.run_id, state.graph, state.sidecar
+        )
+        note_activity(run.run_id, f"Whitespace detection complete: {len(candidates)} candidates")
         state.bus.publish({"type": "coarse_completed", "run_id": run.run_id,
                            "whitespace_count": len(candidates)})
         state.bus.publish({"type": "spend", "spend": state.meter.totals()})
