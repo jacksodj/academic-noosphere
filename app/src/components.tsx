@@ -29,34 +29,55 @@ function fmtDate(iso: string | null): string {
 }
 
 /**
+ * Source link for a work: the DOI resolver when a DOI is known, else the
+ * work's OpenAlex landing page (always exists and links onward to the paper).
+ */
+export function workUrl(workId: string, doi?: string | null): string {
+  if (doi) {
+    const bare = doi.replace(/^https?:\/\/(dx\.)?doi\.org\//, "");
+    return `https://doi.org/${bare}`;
+  }
+  return `https://openalex.org/${workId}`;
+}
+
+/**
  * Citation chip for a work id: renders `[W…]` with a hover card carrying
- * title/year/doi when the report's `works` table resolves it.
+ * title/year/doi when the report's `works` table resolves it. Clicking opens
+ * the source (DOI, else OpenAlex) in the system browser.
  */
 export function WorkChip({ workId, works }: { workId: string; works?: Record<string, WorkRef> }) {
   const ref = works?.[workId];
   return (
-    <span className="chip chip-work">
+    <a
+      className="chip chip-work"
+      href={workUrl(workId, ref?.doi)}
+      target="_blank"
+      rel="noreferrer"
+    >
       <span className="mono">[{workId}]</span>
-      {ref && (ref.title || ref.year || ref.doi) && (
-        <span className="chip-card">
-          {ref.title && <span className="chip-card-title">{ref.title}</span>}
-          <span className="chip-card-meta">
-            {ref.year && <span>{ref.year}</span>}
-            {ref.doi && <span className="mono">doi:{ref.doi}</span>}
-          </span>
+      <span className="chip-card">
+        {ref?.title && <span className="chip-card-title">{ref.title}</span>}
+        <span className="chip-card-meta">
+          {ref?.year && <span>{ref.year}</span>}
+          {ref?.doi ? (
+            <span className="mono">doi:{ref.doi}</span>
+          ) : (
+            <span className="mono">openalex.org/{workId}</span>
+          )}
+          <span className="chip-open">open source ↗</span>
         </span>
-      )}
-    </span>
+      </span>
+    </a>
   );
 }
 
 /** Citation chip for a Web Search finding: domain + retrieval date (identifier only). */
 export function WebChip({ url, retrievedAt }: { url: string; retrievedAt: string | null }) {
   return (
-    <span className="chip chip-web" title={url}>
+    <a className="chip chip-web" href={url} target="_blank" rel="noreferrer" title={url}>
       {domainOf(url)}
       {retrievedAt && <span className="chip-date">retrieved {fmtDate(retrievedAt)}</span>}
-    </span>
+    </a>
   );
 }
 

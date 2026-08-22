@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import Sigma from "sigma";
 import { getReport, getWhitespace, listRuns } from "../endpoints";
 import type { GapReport, ReportCommunity, Run, WhitespaceCandidate } from "../types";
+import { workUrl } from "../components";
 import { candidateStat, parseCandidate } from "../whitespace";
 
 interface ThemeColors {
@@ -319,7 +320,15 @@ export default function Explorer() {
                       return (
                         <li key={wid}>
                           <span className="mono small">[{wid}]</span>{" "}
-                          {w?.title ?? <span className="muted">(unresolved)</span>}
+                          <a
+                            href={workUrl(wid, w?.doi)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="work-link"
+                            title={w?.doi ? `doi:${w.doi}` : `openalex.org/${wid}`}
+                          >
+                            {w?.title ?? <span className="muted">(unresolved — open on OpenAlex)</span>}
+                          </a>
                           {w?.year && <span className="muted"> · {w.year}</span>}
                           {w?.doi && (
                             <div className="mono small muted">doi:{w.doi}</div>
