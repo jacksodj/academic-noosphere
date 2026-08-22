@@ -18,6 +18,7 @@ institutions without the author<->institution pairing.
 
 from __future__ import annotations
 
+import asyncio
 import math
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
@@ -203,9 +204,10 @@ class SurveyService:
             return list(state["kept_ids"]), None
         await self._hydrate(works, candidate_ids)
         present = [wid for wid in candidate_ids if wid in works]
-        vectors = dict(
-            zip(present, self._embedder.embed([embed_text(works[w]) for w in present]))
+        embedded = await asyncio.to_thread(
+            self._embedder.embed, [embed_text(works[w]) for w in present]
         )
+        vectors = dict(zip(present, embedded))
         field_centroid = centroid([vectors[s] for s in seed_ids if s in vectors])
         seed_topics: set[str] = set()
         for sid in seed_ids:
@@ -246,9 +248,10 @@ class SurveyService:
         await self._hydrate(works, kept_ids)
         kept = [wid for wid in kept_ids if wid in works]
         if vectors is None:
-            vectors = dict(
-                zip(kept, self._embedder.embed([embed_text(works[w]) for w in kept]))
+            embedded = await asyncio.to_thread(
+                self._embedder.embed, [embed_text(works[w]) for w in kept]
             )
+            vectors = dict(zip(kept, embedded))
         self._persist(run, works, kept, vectors)
         done.append("persist")
         state["done"] = done

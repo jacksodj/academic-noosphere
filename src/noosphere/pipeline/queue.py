@@ -45,12 +45,23 @@ class SidecarJobs(Protocol):
     def job_failed_for_run(self, run_id: str) -> dict[str, Any] | None: ...
 
 
+# (job_id, run_id, checkpoint_data) — called after every checkpoint save so the
+# integrator can publish live progress (e.g. onto the SSE bus).
+CheckpointListener = Callable[[str, str | None, dict], None]
+
+
 class Checkpoint:
     """Handler-facing view of one job's persisted checkpoint."""
 
-    def __init__(self, sidecar: SidecarJobs, job_id: str) -> None:
+    def __init__(
+        self,
+        sidecar: SidecarJobs,
+        job_id: str,
+        on_save: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self._sidecar = sidecar
         self._job_id = job_id
+        self._on_save = on_save
 
     def get(self) -> dict[str, Any] | None:
         job = self._sidecar.job_get(self._job_id)
@@ -60,14 +71,21 @@ class Checkpoint:
 
     def save(self, data: dict[str, Any]) -> None:
         self._sidecar.job_update(self._job_id, checkpoint=data)
+        if self._on_save is not None:
+            self._on_save(data)
 
 
 Handler = Callable[[dict[str, Any], Checkpoint], Awaitable[None]]
 
 
 class JobQueue:
-    def __init__(self, sidecar: SidecarJobs) -> None:
+    def __init__(
+        self,
+        sidecar: SidecarJobs,
+        on_checkpoint: CheckpointListener | None = None,
+    ) -> None:
         self._sidecar = sidecar
+        self.on_checkpoint = on_checkpoint
 
     def submit(
         self, kind: str, payload: dict[str, Any], run_id: str | None = None
@@ -124,7 +142,12 @@ class JobQueue:
     ) -> None:
         job_id: str = job["job_id"]
         self._sidecar.job_update(job_id, status="running")
-        checkpoint = Checkpoint(self._sidecar, job_id)
+        on_save = None
+        if self.on_checkpoint is not None:
+            listener = self.on_checkpoint
+            run_id = job.get("run_id")
+            on_save = lambda data: listener(job_id, run_id, data)  # noqa: E731
+        checkpoint = Checkpoint(self._sidecar, job_id, on_save=on_save)
         handler = handlers.get(job["kind"])
         if handler is None:
             self._fail(job_id, checkpoint, f"no handler for kind {job['kind']!r}")

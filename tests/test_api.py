@@ -415,3 +415,56 @@ class TestRetryRun:
 
     def test_retry_unknown_run_404s(self, client: TestClient) -> None:
         assert client.post("/api/runs/nope/retry").status_code == 404
+
+
+class TestRunProgress:
+    def test_progress_from_checkpoint(self, client: TestClient, state: AppState) -> None:
+        state.sidecar.create_run(make_run("run-p", status=RunStatus.RUNNING))
+        state.sidecar.job_put("job-p", "coarse_survey", {}, "running", "run-p")
+        state.sidecar.job_update(
+            "job-p",
+            checkpoint={
+                "done": ["seeds", "expand"],
+                "seed_ids": ["W1", "W2"],
+                "candidate_ids": ["W1", "W2", "W3"],
+            },
+        )
+        body = client.get("/api/runs/run-p/progress").json()
+        assert body["job_status"] == "running"
+        assert body["progress"]["done"] == ["seeds", "expand"]
+        assert body["progress"]["current"] == "relevance"
+        assert body["progress"]["counts"] == {"seeds": 2, "candidates": 3, "kept": 0}
+        # no raw id lists leak into the summary
+        assert "seed_ids" not in str(body)
+
+    def test_progress_404s(self, client: TestClient, state: AppState) -> None:
+        assert client.get("/api/runs/nope/progress").status_code == 404
+        state.sidecar.create_run(make_run("run-nojob"))
+        assert client.get("/api/runs/run-nojob/progress").status_code == 404
+
+    def test_checkpoint_saves_publish_progress_events(self, state: AppState) -> None:
+        events: list[dict] = []
+        state.bus.publish = events.append  # type: ignore[method-assign]
+        assert state.queue.on_checkpoint is not None
+        state.sidecar.job_put("job-e", "coarse_survey", {}, "running", "run-e")
+        from noosphere.pipeline.queue import Checkpoint
+
+        cp = Checkpoint(
+            state.sidecar,
+            "job-e",
+            on_save=lambda data: state.queue.on_checkpoint("job-e", "run-e", data),
+        )
+        cp.save({"done": ["seeds"], "seed_ids": ["W1"]})
+        assert events == [
+            {
+                "type": "progress",
+                "run_id": "run-e",
+                "progress": {
+                    "stages": ["seeds", "expand", "relevance", "persist"],
+                    "done": ["seeds"],
+                    "current": "expand",
+                    "counts": {"seeds": 1, "candidates": 0, "kept": 0},
+                    "error": None,
+                },
+            }
+        ]

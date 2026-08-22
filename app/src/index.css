@@ -882,3 +882,8 @@ td.cell-clip {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.progress-label {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+}

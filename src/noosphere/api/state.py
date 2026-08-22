@@ -70,6 +70,27 @@ class EventBus:
         return _events()
 
 
+SURVEY_STAGES = ("seeds", "expand", "relevance", "persist")
+
+
+def progress_summary(checkpoint: dict[str, Any] | None) -> dict[str, Any]:
+    """Compact, UI-safe view of a survey job checkpoint (no id lists)."""
+    state = checkpoint or {}
+    done = [s for s in SURVEY_STAGES if s in (state.get("done") or [])]
+    current = next((s for s in SURVEY_STAGES if s not in done), None)
+    return {
+        "stages": list(SURVEY_STAGES),
+        "done": done,
+        "current": current,
+        "counts": {
+            "seeds": len(state.get("seed_ids") or []),
+            "candidates": len(state.get("candidate_ids") or []),
+            "kept": len(state.get("kept_ids") or []),
+        },
+        "error": state.get("error"),
+    }
+
+
 def settings_path(data_dir: Path) -> Path:
     return Path(data_dir) / SETTINGS_FILE
 
@@ -123,14 +144,26 @@ class AppState:
         sidecar = Sidecar(data_dir / "sidecar.duckdb")
         graph = GraphStore(data_dir / "graph")
         graph.init_schema()
+        bus = EventBus()
+        # Live progress: every checkpoint save becomes an SSE event.
+        queue = JobQueue(
+            sidecar,
+            on_checkpoint=lambda job_id, run_id, data: bus.publish(
+                {
+                    "type": "progress",
+                    "run_id": run_id,
+                    "progress": progress_summary(data),
+                }
+            ),
+        )
         return cls(
             data_dir=data_dir,
             settings=merged,
             sidecar=sidecar,
             graph=graph,
-            queue=JobQueue(sidecar),
+            queue=queue,
             meter=SpendMeter(),
-            bus=EventBus(),
+            bus=bus,
         )
 
     def update_settings(self, data: dict[str, Any]) -> Settings:

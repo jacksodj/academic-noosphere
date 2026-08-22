@@ -136,6 +136,18 @@ export interface AwsCheckResult {
   error?: string;
 }
 
+/**
+ * Survey-stage progress, from GET /api/runs/{id}/progress and SSE "progress"
+ * events — derived server-side from the job checkpoint (no raw id lists).
+ */
+export interface RunProgress {
+  stages: string[];
+  done: string[];
+  current: string | null;
+  counts: { seeds: number; candidates: number; kept: number };
+  error: string | null;
+}
+
 /** POST /api/surveys request body (endpoint lands in wave 2). */
 export interface NewSurveyRequest {
   field_name: string;

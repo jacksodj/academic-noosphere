@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiConfig } from "../api";
-import { createSurvey, listRuns, retryRun } from "../endpoints";
-import type { Run } from "../types";
+import { createSurvey, getRunProgress, listRuns, retryRun, subscribeEvents } from "../endpoints";
+import type { Run, RunProgress } from "../types";
 
 function fmt(iso: string | null): string {
   return iso
@@ -12,6 +12,20 @@ function fmt(iso: string | null): string {
 /** UUIDs blow up the table; show the first block, full id on hover. */
 function shortId(id: string): string {
   return id.length > 12 ? id.slice(0, 8) : id;
+}
+
+function progressLabel(p: RunProgress): string {
+  if (!p.current) return "finishing";
+  const step = p.stages.indexOf(p.current) + 1;
+  const counts =
+    p.counts.kept > 0
+      ? `${p.counts.kept.toLocaleString()} kept`
+      : p.counts.candidates > 0
+        ? `${p.counts.candidates.toLocaleString()} works`
+        : p.counts.seeds > 0
+          ? `${p.counts.seeds.toLocaleString()} seeds`
+          : "";
+  return `${p.current} ${step}/${p.stages.length}${counts ? ` · ${counts}` : ""}`;
 }
 
 export default function Dashboard() {
@@ -34,6 +48,35 @@ export default function Dashboard() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Live progress: SSE events update the stage line and refresh the run list
+  // on state changes; an initial fetch fills progress for already-active runs.
+  const [progress, setProgress] = useState<Record<string, RunProgress>>({});
+
+  useEffect(
+    () =>
+      subscribeEvents((event) => {
+        const runId = typeof event.run_id === "string" ? event.run_id : null;
+        if (!runId) return;
+        if (event.type === "progress" && event.progress) {
+          setProgress((prev) => ({ ...prev, [runId]: event.progress as RunProgress }));
+        } else {
+          refresh(); // coarse_completed, run_requeued, … — statuses changed
+        }
+      }),
+    [refresh],
+  );
+
+  useEffect(() => {
+    for (const r of runs ?? []) {
+      if ((r.status === "running" || r.status === "pending") && !(r.run_id in progress)) {
+        getRunProgress(r.run_id)
+          .then((res) => setProgress((prev) => ({ ...prev, [r.run_id]: res.progress })))
+          .catch(() => undefined);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fill once per runs change
+  }, [runs]);
 
   const [retrying, setRetrying] = useState<string | null>(null);
 
@@ -152,6 +195,11 @@ export default function Dashboard() {
                   </td>
                   <td>
                     <span className={`badge status-${r.status}`}>{r.status}</span>
+                    {r.status === "running" && progress[r.run_id] && (
+                      <span className="muted progress-label">
+                        {progressLabel(progress[r.run_id])}
+                      </span>
+                    )}
                     {r.status === "failed" && (
                       <button
                         className="subtle retry-btn"

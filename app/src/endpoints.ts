@@ -21,6 +21,7 @@ import type {
   AwsCheckResult,
   CredentialStatus,
   Gap,
+  RunProgress,
   GapReport,
   IdeonomyExpansion,
   NewSurveyRequest,
@@ -34,6 +35,60 @@ import type {
 export function listRuns(): Promise<Run[]> {
   if (apiConfig.mock) return mockDelay(mockRuns);
   return get<Run[]>("/api/runs");
+}
+
+/**
+ * Live event feed (SSE /api/events). Fires for progress, spend, completion
+ * and requeue events; mock mode ticks a fake survey forward instead.
+ */
+export function subscribeEvents(onEvent: (event: Record<string, unknown>) => void): () => void {
+  if (apiConfig.mock) {
+    let step = 0;
+    const stages = ["seeds", "expand", "relevance", "persist"];
+    const timer = setInterval(() => {
+      step = (step + 1) % 5;
+      onEvent({
+        type: "progress",
+        run_id: mockRuns.find((r) => r.status === "running")?.run_id ?? "run-0002",
+        progress: {
+          stages,
+          done: stages.slice(0, step),
+          current: stages[step] ?? null,
+          counts: { seeds: 40, candidates: 40 + step * 900, kept: step > 2 ? 3100 : 0 },
+          error: null,
+        },
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }
+  return subscribe("/api/events", (ev) => {
+    try {
+      const data: unknown = JSON.parse(ev.data);
+      if (data && typeof data === "object") onEvent(data as Record<string, unknown>);
+    } catch {
+      // non-JSON event; ignore
+    }
+  });
+}
+
+/** Stage progress for one run (poll fallback / initial fill). */
+export function getRunProgress(
+  runId: string,
+): Promise<{ run_id: string; job_status: string; progress: RunProgress }> {
+  if (apiConfig.mock) {
+    return mockDelay({
+      run_id: runId,
+      job_status: "running",
+      progress: {
+        stages: ["seeds", "expand", "relevance", "persist"],
+        done: ["seeds"],
+        current: "expand",
+        counts: { seeds: 40, candidates: 1240, kept: 0 },
+        error: null,
+      },
+    });
+  }
+  return get(`/api/runs/${runId}/progress`);
 }
 
 /** Requeue a failed run's job; it resumes from its last checkpoint. */

@@ -24,7 +24,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from noosphere import config
-from noosphere.api.state import AppState, settings_to_dict
+from noosphere.api.state import AppState, progress_summary, settings_to_dict
 from noosphere.models import (
     Gap,
     IdeonomyExpansion,
@@ -103,6 +103,22 @@ async def put_settings(
     request: Request, body: dict[str, Any] = Body(...)
 ) -> dict[str, Any]:
     return settings_to_dict(_state(request).update_settings(body))
+
+
+@router.get("/runs/{run_id}/progress")
+async def run_progress(request: Request, run_id: str) -> dict[str, Any]:
+    """Stage-level progress for a run, derived from its job's checkpoint."""
+    state = _state(request)
+    if state.sidecar.get_run(run_id) is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    job = state.sidecar.job_for_run(run_id)
+    if job is None:
+        raise HTTPException(404, f"run {run_id} has no job")
+    return {
+        "run_id": run_id,
+        "job_status": job["status"],
+        "progress": progress_summary(job.get("checkpoint")),
+    }
 
 
 @router.post("/runs/{run_id}/retry", status_code=202)
