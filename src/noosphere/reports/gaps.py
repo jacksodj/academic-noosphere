@@ -75,6 +75,7 @@ def _collect_gaps(run: Run, sidecar: Any) -> list[Gap]:
 
 
 MAX_COMMUNITY_WORKS = 30  # per-community drill-in cap for the report's works index
+MIN_COMMUNITY_SIZE = 3  # smaller communities pool into one "Unclustered" node
 
 
 def _communities_block(run_id: str, sidecar: Any, graph: Any) -> tuple[dict, list, list]:
@@ -119,12 +120,27 @@ def _communities_block(run_id: str, sidecar: Any, graph: Any) -> tuple[dict, lis
                 "top_topics": top_names,
                 "works": shown,
             })
+        # Louvain leaves citation-isolated works as singleton communities;
+        # rendering each as a node floods the map with identical topic labels.
+        # Pool everything under MIN_COMMUNITY_SIZE into one honest aggregate.
+        minor = [c for c in comm_list if c["size"] < MIN_COMMUNITY_SIZE]
+        if minor:
+            comm_list = [c for c in comm_list if c["size"] >= MIN_COMMUNITY_SIZE]
+            pooled = [w for c in minor for w in c["works"]][:MAX_COMMUNITY_WORKS]
+            comm_list.append({
+                "id": -1,
+                "label": f"Unclustered ({len(minor)} isolated works/pairs)",
+                "size": sum(c["size"] for c in minor),
+                "top_topics": [],
+                "works": pooled,
+            })
+        kept_ids = {c["id"] for c in comm_list}
         density = inter_community_edge_density(edges, communities)
         max_d = max(density.values(), default=0.0) or 1.0
         comm_edges = [
             {"source": a, "target": b, "weight": round(d / max_d, 4)}
             for (a, b), d in sorted(density.items())
-            if d > 0
+            if d > 0 and a in kept_ids and b in kept_ids
         ]
         return works_index, comm_list, comm_edges
     except Exception:

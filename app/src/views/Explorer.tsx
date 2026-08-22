@@ -47,7 +47,7 @@ export default function Explorer() {
 
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [candidates, setCandidates] = useState<WhitespaceCandidate[] | null>(null);
-  const [report, setReport] = useState<GapReport | null>(null);
+  const [reports, setReports] = useState<GapReport[]>([]);
   const [reportChecked, setReportChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
@@ -66,7 +66,7 @@ export default function Explorer() {
   useEffect(() => {
     if (!runId || !runs) return;
     setCandidates(null);
-    setReport(null);
+    setReports([]);
     setReportChecked(false);
     setSelection(null);
     getWhitespace(runId)
@@ -76,33 +76,58 @@ export default function Explorer() {
     const zoomRuns = runs.filter(
       (r) => r.phase === "zoom" && r.parent_run_id === runId && r.status === "completed",
     );
+    // Default lens shows everything we know: communities from EVERY completed
+    // zoom report of this coarse run, merged (ids namespaced per report).
     Promise.allSettled(zoomRuns.map((r) => getReport(r.run_id))).then((results) => {
-      const found = results.find(
-        (res): res is PromiseFulfilledResult<GapReport> =>
-          res.status === "fulfilled" && res.value.communities.length > 0,
+      setReports(
+        results
+          .filter(
+            (res): res is PromiseFulfilledResult<GapReport> =>
+              res.status === "fulfilled" && res.value.communities.length > 0,
+          )
+          .map((res) => res.value),
       );
-      setReport(found?.value ?? null);
       setReportChecked(true);
     });
   }, [runId, runs]);
 
-  // Derive the community list: report communities, else stubs for community
-  // ids referenced by bridge candidates (coarse run not yet zoomed).
-  const communities = useMemo<ReportCommunity[]>(() => {
-    if (report && report.communities.length > 0) return report.communities;
-    const ids = new Set<number>();
-    for (const c of candidates ?? []) {
-      if (c.community_a !== null) ids.add(c.community_a);
-      if (c.community_b !== null) ids.add(c.community_b);
+  // Merge community lists across all reports; keys are namespaced per report
+  // so ids can't collide, and duplicate labels get a disambiguating suffix.
+  const merged = useMemo(() => {
+    const entries: { key: string; community: ReportCommunity; reportIdx: number }[] = [];
+    reports.forEach((rep, ri) => {
+      for (const c of rep.communities) {
+        entries.push({ key: `c${ri}:${c.id}`, community: c, reportIdx: ri });
+      }
+    });
+    if (entries.length === 0) {
+      const ids = new Set<number>();
+      for (const c of candidates ?? []) {
+        if (c.community_a !== null) ids.add(c.community_a);
+        if (c.community_b !== null) ids.add(c.community_b);
+      }
+      for (const id of [...ids].sort((a, b) => a - b)) {
+        entries.push({
+          key: `stub:${id}`,
+          community: { id, label: `Community ${id}`, size: 50, top_topics: [], works: [] },
+          reportIdx: -1,
+        });
+      }
     }
-    return [...ids].sort((a, b) => a - b).map((id) => ({
-      id,
-      label: `Community ${id}`,
-      size: 50,
-      top_topics: [],
-      works: [],
-    }));
-  }, [report, candidates]);
+    entries.sort((a, b) => b.community.size - a.community.size);
+    const labelCounts = new Map<string, number>();
+    for (const e of entries) {
+      const l = e.community.label ?? `Community ${e.community.id}`;
+      labelCounts.set(l, (labelCounts.get(l) ?? 0) + 1);
+    }
+    const works: Record<string, import("../types").WorkRef> = {};
+    for (const rep of reports) Object.assign(works, rep.works);
+    return { entries, labelCounts, works };
+  }, [reports, candidates]);
+  const communities = useMemo(
+    () => merged.entries.map((e) => e.community),
+    [merged],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -111,34 +136,38 @@ export default function Explorer() {
     const theme = readTheme();
     const graph = new Graph({ multi: true });
 
-    // Community super-nodes on a circle; node size ~ sqrt(work count).
-    const n = communities.length;
+    // Community super-nodes on a circle (size-sorted); node size ~ sqrt(works).
+    const n = merged.entries.length;
     const R = 100;
-    const pos = new Map<number, { x: number; y: number }>();
-    communities.forEach((c, i) => {
+    const pos = new Map<string, { x: number; y: number }>();
+    merged.entries.forEach((entry, i) => {
+      const c = entry.community;
       const angle = (2 * Math.PI * i) / n - Math.PI / 2;
       const x = R * Math.cos(angle);
       const y = R * Math.sin(angle);
-      pos.set(c.id, { x, y });
-      graph.addNode(`c${c.id}`, {
+      pos.set(entry.key, { x, y });
+      const base = c.label ?? `Community ${c.id}`;
+      const dupe = (merged.labelCounts.get(base) ?? 0) > 1;
+      graph.addNode(entry.key, {
         x,
         y,
         size: 6 + Math.sqrt(c.size) / 2.5,
-        label: `${c.label ?? `Community ${c.id}`} (${c.size})`,
+        label: `${base}${dupe ? ` ·C${c.id}` : ""} (${c.size})`,
         color: theme.accent,
         kind: "community",
       });
     });
 
-    // Inter-community edges, thickness ~ density weight.
-    for (const e of report?.community_edges ?? []) {
-      if (pos.has(e.source) && pos.has(e.target)) {
-        graph.addEdge(`c${e.source}`, `c${e.target}`, {
-          size: 0.5 + e.weight * 5,
-          color: theme.border,
-        });
+    // Inter-community edges (within each report), thickness ~ density weight.
+    reports.forEach((rep, ri) => {
+      for (const e of rep.community_edges) {
+        const a = `c${ri}:${e.source}`;
+        const b = `c${ri}:${e.target}`;
+        if (pos.has(a) && pos.has(b)) {
+          graph.addEdge(a, b, { size: 0.5 + e.weight * 5, color: theme.border });
+        }
       }
-    }
+    });
 
     // Whitespace candidates: bridges as a highlighted mid-point node with
     // thin connector edges (dashed-equivalent); thin cells on an outer ring.
@@ -158,8 +187,9 @@ export default function Explorer() {
     for (const c of candidates) {
       const wsColor = c.status === "confirmed" ? theme.warn : theme.muted;
       if (c.kind === "bridge" && c.community_a !== null && c.community_b !== null) {
-        const a = pos.get(c.community_a);
-        const b = pos.get(c.community_b);
+        const keys = [...pos.keys()];
+        const a = pos.get(`stub:${c.community_a}`) ?? (keys[0] ? pos.get(keys[0]) : undefined);
+        const b = pos.get(`stub:${c.community_b}`) ?? (keys[1] ? pos.get(keys[1]) : undefined);
         if (!a || !b) continue;
         const mx = (a.x + b.x) / 2;
         const my = (a.y + b.y) / 2;
@@ -171,8 +201,11 @@ export default function Explorer() {
           color: wsColor,
           kind: "whitespace",
         });
-        graph.addEdge(`c${c.community_a}`, c.whitespace_id, { size: 1, color: wsColor });
-        graph.addEdge(c.whitespace_id, `c${c.community_b}`, { size: 1, color: wsColor });
+        // connector edges only when the referenced communities exist as nodes
+        if (pos.has(`stub:${c.community_a}`) && pos.has(`stub:${c.community_b}`)) {
+          graph.addEdge(`stub:${c.community_a}`, c.whitespace_id, { size: 1, color: wsColor });
+          graph.addEdge(c.whitespace_id, `stub:${c.community_b}`, { size: 1, color: wsColor });
+        }
       } else if (c.kind === "thin_cell") {
         const angle = (2 * Math.PI * thinIdx) / Math.max(1, thinCells.length) - Math.PI / 4;
         thinIdx += 1;
@@ -201,9 +234,8 @@ export default function Explorer() {
     renderer.on("clickNode", ({ node }) => {
       const kind = graph.getNodeAttribute(node, "kind") as string;
       if (kind === "community") {
-        const id = Number(node.slice(1));
-        const community = communities.find((c) => c.id === id);
-        if (community) setSelection({ type: "community", community });
+        const entry = merged.entries.find((e) => e.key === node);
+        if (entry) setSelection({ type: "community", community: entry.community });
       } else {
         const candidate = candidates.find((c) => c.whitespace_id === node);
         if (candidate) setSelection({ type: "whitespace", candidate });
@@ -227,9 +259,9 @@ export default function Explorer() {
       mq.removeEventListener("change", onTheme);
       renderer.kill();
     };
-  }, [candidates, report, reportChecked, communities]);
+  }, [candidates, reports, reportChecked, merged]);
 
-  const works = report?.works ?? {};
+  const works = merged.works;
 
   return (
     <section>
@@ -291,10 +323,15 @@ export default function Explorer() {
               </span>
               <span>edge thickness ~ inter-community density</span>
             </div>
-            {!report && (
+            {reports.length === 0 && (
               <p className="muted small">
                 No completed zoom report for this run yet — showing community stubs referenced by
                 bridge candidates only.
+              </p>
+            )}
+            {reports.length > 1 && (
+              <p className="muted small">
+                Showing merged communities from {reports.length} zoom regions.
               </p>
             )}
           </div>
