@@ -66,10 +66,20 @@ def _build_handlers(state: AppState) -> dict:
     def llm() -> "LlmClient":
         return LlmClient(state.settings.aws_region, state.meter)
 
+    def note_missing_credentials(run_id: str) -> None:
+        if not get_credential("openalex_api_key") and not get_credential("crossref_mailto"):
+            note_activity(
+                run_id,
+                "Warning: no OpenAlex API key or contact email set — requests run "
+                "in the anonymous pool and may be throttled or stalled. Add them "
+                "in Settings → API credentials.",
+            )
+
     async def coarse_survey(payload: dict, checkpoint: Checkpoint) -> None:
         run = state.sidecar.get_run(payload["run_id"])
         if run is None:
             raise ValueError(f"unknown run {payload['run_id']}")
+        note_missing_credentials(run.run_id)
         await make_service().run_coarse(run, payload["seed_queries"], checkpoint)
         candidates = detect_whitespace(run.run_id, state.graph, state.sidecar)
         state.bus.publish({"type": "coarse_completed", "run_id": run.run_id,
@@ -80,6 +90,7 @@ def _build_handlers(state: AppState) -> dict:
         run = state.sidecar.get_run(payload["run_id"])
         if run is None:
             raise ValueError(f"unknown run {payload['run_id']}")
+        note_missing_credentials(run.run_id)
         parent_ws = [w for w in state.sidecar.list_whitespace(payload["parent_run_id"])
                      if w.whitespace_id == payload["whitespace_id"]]
         if not parent_ws:

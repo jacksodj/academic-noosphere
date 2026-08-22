@@ -322,3 +322,49 @@ def test_helpers() -> None:
     assert bare_doi(None) is None
     assert reconstruct_abstract(None) is None
     assert reconstruct_abstract({"b": [1], "a": [0], "c": [2]}) == "a b c"
+
+
+async def test_stalled_request_hits_deadline_with_actionable_error(
+    respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A response that never arrives must fail fast, not hang the survey."""
+    import noosphere.sources.openalex as oa
+
+    monkeypatch.setattr(oa, "REQUEST_DEADLINE_S", 0.05)
+    monkeypatch.setattr(oa, "RETRY_BACKOFF_S", 0.01)
+
+    async def never_responds(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(30)
+        return httpx.Response(200, json={})
+
+    respx_mock.get(host="api.openalex.org", path="/works").mock(
+        side_effect=never_responds
+    )
+    async with make_client() as client:
+        start = time.monotonic()
+        with pytest.raises(RuntimeError, match="stalled twice.*anonymous"):
+            await client.works_search("agent memory")
+    assert time.monotonic() - start < 5.0
+
+
+async def test_deadline_retry_recovers_from_one_stall(
+    respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import noosphere.sources.openalex as oa
+
+    monkeypatch.setattr(oa, "REQUEST_DEADLINE_S", 0.05)
+    monkeypatch.setattr(oa, "RETRY_BACKOFF_S", 0.01)
+
+    calls = {"n": 0}
+
+    async def stall_once(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            await asyncio.sleep(30)
+        return httpx.Response(200, json={"meta": {}, "results": [RAW_WORK]})
+
+    respx_mock.get(host="api.openalex.org", path="/works").mock(side_effect=stall_once)
+    async with make_client() as client:
+        results = await client.works_search("agent memory")
+    assert calls["n"] == 2
+    assert len(results) == 1

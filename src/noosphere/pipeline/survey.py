@@ -293,8 +293,15 @@ class SurveyService:
             return
         if len(missing) > 100:
             self._note(f"Hydrating metadata for {len(missing)} works from OpenAlex")
-        for raw in await self._openalex.works_batch(missing):
-            works[short_id(raw["id"])] = raw
+        # Chunked here (not just inside works_batch) so long hydrations report
+        # progress into the activity feed instead of going silent for minutes.
+        slice_size = 500
+        for start in range(0, len(missing), slice_size):
+            for raw in await self._openalex.works_batch(missing[start : start + slice_size]):
+                works[short_id(raw["id"])] = raw
+            fetched = min(start + slice_size, len(missing))
+            if len(missing) > slice_size:
+                self._note(f"Hydrating metadata: {fetched}/{len(missing)} works")
 
     # -- seed loaders ----------------------------------------------------------
 

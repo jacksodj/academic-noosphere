@@ -32,6 +32,7 @@ BATCH_SIZE = 50  # OpenAlex caps OR-filters at 50 values per request
 CITING_CAP = 500
 CITING_PER_PAGE = 200
 RETRY_BACKOFF_S = 1.0
+REQUEST_DEADLINE_S = 90.0  # hard wall-clock cap per request (stall detection)
 
 
 class ResponseCache(Protocol):
@@ -111,6 +112,23 @@ class OpenAlexClient:
         query = urlencode(sorted((k, str(v)) for k, v in merged.items()))
         return f"{BASE_URL}{path}?{query}" if query else f"{BASE_URL}{path}"
 
+    async def _fetch(self, url: str) -> "httpx.Response":
+        """One rate-limited GET under a hard wall-clock deadline.
+
+        httpx's read timeout only fires on silence between chunks — a server
+        that dribbles bytes (observed from OpenAlex under anonymous-traffic
+        starvation) can hold a request open forever. The deadline converts
+        that stall into an error; the client is reset so the dead connection
+        is not reused.
+        """
+        await self._rate.acquire()
+        try:
+            async with asyncio.timeout(REQUEST_DEADLINE_S):
+                return await self._client().get(url)
+        except (TimeoutError, httpx.TimeoutException):
+            await self.aclose()  # drop the stalled connection
+            raise
+
     async def _get_json(self, path: str, params: dict[str, Any]) -> dict | None:
         """Cache-first GET. Returns parsed JSON, or None on HTTP 404."""
         url = self._url(path, params, with_auth=True)
@@ -120,8 +138,18 @@ class OpenAlexClient:
         if cached is not None:
             return json.loads(cached)
 
-        await self._rate.acquire()
-        resp = await self._client().get(url)
+        try:
+            resp = await self._fetch(url)
+        except (TimeoutError, httpx.TimeoutException):
+            await asyncio.sleep(RETRY_BACKOFF_S)
+            try:
+                resp = await self._fetch(url)
+            except (TimeoutError, httpx.TimeoutException) as exc:
+                raise RuntimeError(
+                    f"OpenAlex request stalled twice (>{REQUEST_DEADLINE_S}s each): "
+                    f"{clean_url} — if this persists, add an OpenAlex API key and "
+                    "contact email in Settings (anonymous traffic is deprioritized)"
+                ) from exc
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
             try:
@@ -129,8 +157,7 @@ class OpenAlexClient:
             except ValueError:
                 backoff = RETRY_BACKOFF_S
             await asyncio.sleep(backoff)
-            await self._rate.acquire()
-            resp = await self._client().get(url)
+            resp = await self._fetch(url)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
