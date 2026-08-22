@@ -166,11 +166,18 @@ export interface GapReport {
   community_edges: CommunityEdge[];
 }
 
+/** Per-model token counts + list-price estimate (core: SpendMeter.totals()). */
+export interface SpendUsage {
+  input: number;
+  output: number;
+  est_usd: number;
+}
+
 /** GET /api/spend — running LLM spend estimate (live meter, no auto-stop). */
 export interface SpendSummary {
-  total_usd: number;
-  by_model: Record<string, number>;
-  updated_at: string;
+  models: Record<string, SpendUsage>;
+  total: SpendUsage;
+  note?: string;
 }
 
 /** POST /api/whitespace/{id}/zoom response: the created zoom Run + updated candidate. */

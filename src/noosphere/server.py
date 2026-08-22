@@ -14,6 +14,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from noosphere import __version__
@@ -133,6 +134,21 @@ async def require_token(request: Request, call_next):
     if not secrets.compare_digest(presented, f"Bearer {_token}"):
         return JSONResponse({"detail": "missing or invalid token"}, status_code=401)
     return await call_next(request)
+
+
+# The SPA is cross-origin to this server both in dev (vite on localhost:<port>)
+# and in the Tauri shell (tauri://localhost / https://tauri.localhost on macOS).
+# Added after require_token so CORSMiddleware wraps outermost and answers
+# OPTIONS preflights before the token check can 401 them.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=(
+        r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?"
+        r"|tauri://localhost|https://tauri\.localhost)$"
+    ),
+    allow_methods=["*"],
+    allow_headers=["authorization", "content-type"],
+)
 
 
 @app.get("/health")

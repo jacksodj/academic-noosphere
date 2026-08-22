@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -11,7 +12,27 @@ import pytest
 from noosphere.ideonomy.picker import pick_tuple, tuple_bodies
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-UPSTREAM_CLONE = Path("/home/user/latentwill/ideonomy-skill")
+
+
+def _find_upstream_clone() -> Path:
+    """Resolve the local latentwill/ideonomy-skill clone.
+
+    IDEONOMY_UPSTREAM wins; otherwise try the known checkout locations
+    (cloud sandbox, then this Mac).
+    """
+    env = os.environ.get("IDEONOMY_UPSTREAM")
+    candidates = [Path(env)] if env else []
+    candidates += [
+        Path("/home/user/latentwill/ideonomy-skill"),
+        Path.home() / "Code" / "latentwill" / "ideonomy-skill",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[-1]
+
+
+UPSTREAM_CLONE = _find_upstream_clone()
 SECTIONS = ("operators", "organons", "dimension-prompts")
 
 

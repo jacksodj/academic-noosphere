@@ -12,17 +12,22 @@ traceable to an exact upstream revision.
 Usage:
   uv run scripts/sync_ideonomy.py
   uv run scripts/sync_ideonomy.py --source /path/to/ideonomy-skill
+
+The default source can also be set with the IDEONOMY_UPSTREAM env var.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_SOURCE = Path("/home/user/latentwill/ideonomy-skill")
+DEFAULT_SOURCE = Path(
+    os.environ.get("IDEONOMY_UPSTREAM", "/home/user/latentwill/ideonomy-skill")
+)
 SECTIONS = ("operators", "organons", "dimension-prompts")
 
 

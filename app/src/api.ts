@@ -118,6 +118,10 @@ export function subscribe(
   onEvent: (event: MessageEvent<string>) => void,
   onError?: (event: Event) => void,
 ): () => void {
+  if (!apiConfig.baseUrl) {
+    // Unconfigured (no ?port= and no VITE_API_PORT): nothing to subscribe to.
+    return () => undefined;
+  }
   const url = new URL(path, apiConfig.baseUrl);
   url.searchParams.set("token", apiConfig.token);
   const source = new EventSource(url);

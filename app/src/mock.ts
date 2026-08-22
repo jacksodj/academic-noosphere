@@ -487,12 +487,11 @@ export const mockExpansions: Record<string, IdeonomyExpansion[]> = {
 
 /** GET /api/spend fixture — mutated by the mock SSE ticker in endpoints.ts. */
 export const mockSpend: SpendSummary = {
-  total_usd: 12.47,
-  by_model: {
-    "anthropic.claude-opus-5": 9.81,
-    "anthropic.claude-haiku-4-5": 2.66,
+  models: {
+    "anthropic.claude-opus-5": { input: 1_310_000, output: 130_400, est_usd: 9.81 },
+    "anthropic.claude-haiku-4-5": { input: 1_820_000, output: 168_000, est_usd: 2.66 },
   },
-  updated_at: "2026-08-21T09:20:00Z",
+  total: { input: 3_130_000, output: 298_400, est_usd: 12.47 },
 };
 
 /** GET /api/runs/{id}/report.md fixture (Markdown export). */

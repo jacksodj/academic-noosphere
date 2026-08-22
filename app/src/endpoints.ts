@@ -179,9 +179,8 @@ export function subscribeSpend(onSpend: (spend: SpendSummary) => void): () => vo
 
   if (apiConfig.mock) {
     const timer = setInterval(() => {
-      mockSpend.total_usd += 0.03;
-      mockSpend.by_model["anthropic.claude-haiku-4-5"] += 0.03;
-      mockSpend.updated_at = new Date().toISOString();
+      mockSpend.total.est_usd += 0.03;
+      mockSpend.models["anthropic.claude-haiku-4-5"].est_usd += 0.03;
       push(structuredClone(mockSpend));
     }, 5000);
     return () => {
@@ -195,7 +194,7 @@ export function subscribeSpend(onSpend: (spend: SpendSummary) => void): () => vo
   const unsubscribe = subscribe("/api/events", (ev) => {
     try {
       const data: unknown = JSON.parse(ev.data);
-      if (data && typeof data === "object" && "total_usd" in data) {
+      if (data && typeof data === "object" && "total" in data && "models" in data) {
         push(data as SpendSummary);
       } else if (
         data &&

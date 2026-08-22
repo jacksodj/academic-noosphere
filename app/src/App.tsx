@@ -23,13 +23,13 @@ function SpendMeter() {
   useEffect(() => subscribeSpend(setSpend), []);
 
   const title = spend
-    ? Object.entries(spend.by_model)
-        .map(([model, usd]) => `${model}: $${usd.toFixed(2)}`)
-        .join("\n")
+    ? Object.entries(spend.models)
+        .map(([model, usage]) => `${model}: $${usage.est_usd.toFixed(2)}`)
+        .join("\n") || "No LLM spend yet"
     : "Estimated LLM spend";
   return (
     <span className="spend-meter" title={title}>
-      est. spend <strong>{spend ? `$${spend.total_usd.toFixed(2)}` : "$—"}</strong>
+      est. spend <strong>{spend ? `$${spend.total.est_usd.toFixed(2)}` : "$—"}</strong>
     </span>
   );
 }
