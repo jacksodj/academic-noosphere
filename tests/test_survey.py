@@ -553,3 +553,43 @@ async def test_activities_emitted_through_pipeline(
     # stages announce themselves in order
     stages = [m for _, m in lines if "stage complete" in m or "Relevance filter" in m]
     assert len(stages) >= 3
+
+
+async def test_embed_all_batches_report_progress_and_eta(
+    sidecar: Sidecar, graph: GraphStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import noosphere.pipeline.survey as survey_mod
+
+    monkeypatch.setattr(survey_mod, "EMBED_BATCH", 3)
+    notes: list[str] = []
+    ticks: list[dict] = []
+    service = make_service(
+        sidecar,
+        graph,
+        FakeOpenAlex(),
+        Settings(),
+        on_activity=lambda rid, msg: notes.append(msg),
+    )
+    service._on_stage_progress = lambda rid, payload: ticks.append(payload)
+    service._active_run_id = "run-embed"
+
+    texts = [f"text {i}" for i in range(8)]
+    single = StubEmbedder().embed(texts)
+    batched = await service._embed_all(texts)
+
+    assert batched == single  # batching must not change the embeddings
+    embed_notes = [n for n in notes if n.startswith("Embedding:")]
+    assert len(embed_notes) == 3  # ceil(8/3) batches
+    assert "8/8" in embed_notes[-1]
+    assert [t["done"] for t in ticks] == [3, 6, 8]
+    assert all(t["total"] == 8 and t["stage"] == "relevance" for t in ticks)
+    # ETA present on all but possibly instant batches; final tick has 0 remaining
+    assert ticks[-1]["eta_s"] in (0, None)
+
+
+def test_fmt_duration() -> None:
+    from noosphere.pipeline.survey import _fmt_duration
+
+    assert _fmt_duration(45) == "45s"
+    assert _fmt_duration(200) == "3m 20s"
+    assert _fmt_duration(4320) == "1h 12m"

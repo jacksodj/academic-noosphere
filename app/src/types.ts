@@ -148,6 +148,19 @@ export interface RunProgress {
   error: string | null;
 }
 
+/**
+ * Transient sub-stage tick (SSE "stage_progress", never persisted) —
+ * currently the embed batches: done/total abstracts + projected seconds left.
+ */
+export interface StageProgress {
+  run_id: string;
+  stage: string;
+  step: string;
+  done: number;
+  total: number;
+  eta_s: number | null;
+}
+
 /** One persisted activity line (GET /api/runs/{id}/activity + SSE "activity"). */
 export interface RunActivity {
   run_id: string;

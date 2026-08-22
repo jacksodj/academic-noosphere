@@ -15,7 +15,8 @@ import {
   retryRun,
   subscribeEvents,
 } from "../endpoints";
-import type { Run, RunActivity, RunProgress } from "../types";
+import { stageProgressLabel } from "../components";
+import type { Run, RunActivity, RunProgress, StageProgress } from "../types";
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour12: false });
@@ -45,6 +46,7 @@ export default function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
   const [run, setRun] = useState<Run | null>(null);
   const [progress, setProgress] = useState<RunProgress | null>(null);
+  const [stageTick, setStageTick] = useState<StageProgress | null>(null);
   const [activities, setActivities] = useState<RunActivity[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -77,6 +79,9 @@ export default function RunDetail() {
           setActivities((prev) => [...prev, event as unknown as RunActivity]);
         } else if (event.type === "progress" && event.progress) {
           setProgress(event.progress as RunProgress);
+          setStageTick(null); // checkpoint save: sub-stage tick is stale
+        } else if (event.type === "stage_progress") {
+          setStageTick(event as unknown as StageProgress);
         } else {
           refreshRun(); // lifecycle event (completed, requeued, …)
         }
@@ -90,6 +95,20 @@ export default function RunDetail() {
     const el = feedRef.current;
     if (el && followRef.current) el.scrollTop = el.scrollHeight;
   }, [activities]);
+
+  // Poll fallback: if SSE drops silently, re-sync feed + run every 30s while
+  // the run is active (full replace; the list is capped server-side).
+  useEffect(() => {
+    if (!runId || !run || (run.status !== "running" && run.status !== "pending")) return;
+    const timer = setInterval(() => {
+      getRunActivity(runId)
+        .then((res) => setActivities(res.activities))
+        .catch(() => undefined);
+      refreshRun();
+    }, 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-arm on status change
+  }, [runId, run?.status]);
 
   async function retry() {
     if (!runId) return;
@@ -136,6 +155,11 @@ export default function RunDetail() {
       )}
 
       {progress && <StageChips progress={progress} />}
+      {stageTick && run?.status === "running" && (
+        <p className="stage-eta">
+          <span className="badge status-running">{stageProgressLabel(stageTick)}</span>
+        </p>
+      )}
       {progress?.error && <p className="error">{progress.error}</p>}
 
       <div

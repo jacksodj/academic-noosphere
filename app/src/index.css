@@ -959,3 +959,7 @@ a.plain-link {
 a.plain-link:hover {
   text-decoration: underline;
 }
+
+.stage-eta {
+  margin: 0 0 0.5rem;
+}

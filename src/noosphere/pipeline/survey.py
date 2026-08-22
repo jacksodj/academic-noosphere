@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
@@ -34,8 +35,20 @@ from noosphere.sources.websearch import WebSearchClient, extract_doi
 
 DISCOVERY_RESOLVE_PER_PAGE = 2
 SEED_SEARCH_PER_PAGE = 25
+EMBED_BATCH = 512  # abstracts per off-loop embed call (progress + ETA cadence)
 
 SeedLoader = Callable[[], Awaitable[list[dict]]]
+
+
+def _fmt_duration(seconds: int) -> str:
+    """Human ETA: 45s, 3m 20s, 1h 12m."""
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
 
 
 def embed_text(raw: dict) -> str:
@@ -80,6 +93,7 @@ class SurveyService:
         settings: Settings,
         websearch: WebSearchClient | None = None,
         on_activity: Callable[[str, str], None] | None = None,
+        on_stage_progress: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self._sidecar = sidecar
         self._graph = graph
@@ -88,12 +102,46 @@ class SurveyService:
         self._settings = settings
         self._websearch = websearch
         self._on_activity = on_activity
+        self._on_stage_progress = on_stage_progress
         self._active_run_id: str | None = None
 
     def _note(self, message: str) -> None:
         """Emit one human-readable activity line for the active run."""
         if self._on_activity is not None and self._active_run_id is not None:
             self._on_activity(self._active_run_id, message)
+
+    def _stage_progress(self, payload: dict[str, Any]) -> None:
+        """Emit transient sub-stage progress (SSE only, never persisted)."""
+        if self._on_stage_progress is not None and self._active_run_id is not None:
+            self._on_stage_progress(self._active_run_id, payload)
+
+    async def _embed_all(self, texts: list[str]) -> list[list[float]]:
+        """Embed in batches off the event loop, reporting count + ETA.
+
+        The rate estimate uses the elapsed wall clock of this call, so the
+        projection self-corrects as batches complete.
+        """
+        if len(texts) <= EMBED_BATCH:
+            return await asyncio.to_thread(self._embedder.embed, texts)
+        out: list[list[float]] = []
+        started = time.monotonic()
+        for i in range(0, len(texts), EMBED_BATCH):
+            out.extend(
+                await asyncio.to_thread(self._embedder.embed, texts[i : i + EMBED_BATCH])
+            )
+            completed = min(i + EMBED_BATCH, len(texts))
+            elapsed = time.monotonic() - started
+            rate = completed / elapsed if elapsed > 0 else 0.0
+            eta_s = round((len(texts) - completed) / rate) if rate > 0 else None
+            self._note(
+                f"Embedding: {completed}/{len(texts)} abstracts"
+                + (f" (~{_fmt_duration(eta_s)} remaining)" if eta_s else "")
+            )
+            self._stage_progress(
+                {"stage": "relevance", "step": "embed",
+                 "done": completed, "total": len(texts), "eta_s": eta_s}
+            )
+        return out
 
     # -- public entry points ---------------------------------------------------
 
@@ -229,9 +277,7 @@ class SurveyService:
         await self._hydrate(works, candidate_ids)
         present = [wid for wid in candidate_ids if wid in works]
         self._note(f"Embedding {len(present)} abstracts (this is the long stage)")
-        embedded = await asyncio.to_thread(
-            self._embedder.embed, [embed_text(works[w]) for w in present]
-        )
+        embedded = await self._embed_all([embed_text(works[w]) for w in present])
         vectors = dict(zip(present, embedded))
         field_centroid = centroid([vectors[s] for s in seed_ids if s in vectors])
         seed_topics: set[str] = set()
@@ -277,9 +323,7 @@ class SurveyService:
         await self._hydrate(works, kept_ids)
         kept = [wid for wid in kept_ids if wid in works]
         if vectors is None:
-            embedded = await asyncio.to_thread(
-                self._embedder.embed, [embed_text(works[w]) for w in kept]
-            )
+            embedded = await self._embed_all([embed_text(works[w]) for w in kept])
             vectors = dict(zip(kept, embedded))
         self._note(f"Persisting {len(kept)} works to graph + sidecar")
         self._persist(run, works, kept, vectors)

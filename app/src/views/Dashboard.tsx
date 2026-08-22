@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiConfig } from "../api";
+import { stageProgressLabel } from "../components";
 import { createSurvey, getRunProgress, listRuns, retryRun, subscribeEvents } from "../endpoints";
-import type { Run, RunProgress } from "../types";
+import type { Run, RunProgress, StageProgress } from "../types";
 
 function fmt(iso: string | null): string {
   return iso
@@ -53,6 +54,7 @@ export default function Dashboard() {
   // Live progress: SSE events update the stage line and refresh the run list
   // on state changes; an initial fetch fills progress for already-active runs.
   const [progress, setProgress] = useState<Record<string, RunProgress>>({});
+  const [stageTicks, setStageTicks] = useState<Record<string, StageProgress>>({});
 
   useEffect(
     () =>
@@ -61,12 +63,28 @@ export default function Dashboard() {
         if (!runId) return;
         if (event.type === "progress" && event.progress) {
           setProgress((prev) => ({ ...prev, [runId]: event.progress as RunProgress }));
+          // a checkpoint save means the sub-stage tick is stale
+          setStageTicks((prev) => {
+            const { [runId]: _stale, ...rest } = prev;
+            return rest;
+          });
+        } else if (event.type === "stage_progress") {
+          setStageTicks((prev) => ({ ...prev, [runId]: event as unknown as StageProgress }));
         } else {
           refresh(); // coarse_completed, run_requeued, … — statuses changed
         }
       }),
     [refresh],
   );
+
+  // Poll fallback: SSE can drop silently (sleep/wake, reconnect gaps) — keep
+  // the list honest while anything is active.
+  useEffect(() => {
+    const anyActive = (runs ?? []).some((r) => r.status === "running" || r.status === "pending");
+    if (!anyActive) return;
+    const timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+  }, [runs, refresh]);
 
   useEffect(() => {
     for (const r of runs ?? []) {
@@ -198,9 +216,11 @@ export default function Dashboard() {
                   </td>
                   <td>
                     <span className={`badge status-${r.status}`}>{r.status}</span>
-                    {r.status === "running" && progress[r.run_id] && (
+                    {r.status === "running" && (stageTicks[r.run_id] || progress[r.run_id]) && (
                       <span className="muted progress-label">
-                        {progressLabel(progress[r.run_id])}
+                        {stageTicks[r.run_id]
+                          ? stageProgressLabel(stageTicks[r.run_id])
+                          : progressLabel(progress[r.run_id])}
                       </span>
                     )}
                     {r.status === "failed" && (

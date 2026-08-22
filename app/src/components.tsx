@@ -76,3 +76,24 @@ export function EvidenceChip({
   }
   return null;
 }
+
+/** Human duration for ETAs: 45s, 3m 20s, 1h 12m. */
+export function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${String(secs).padStart(2, "0")}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/** "embedding 4,096/21,293 · ~8m 30s left" from a stage_progress tick. */
+export function stageProgressLabel(p: {
+  step: string;
+  done: number;
+  total: number;
+  eta_s: number | null;
+}): string {
+  const eta = p.eta_s != null && p.eta_s > 0 ? ` · ~${fmtDuration(p.eta_s)} left` : "";
+  return `${p.step} ${p.done.toLocaleString()}/${p.total.toLocaleString()}${eta}`;
+}

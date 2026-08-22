@@ -47,6 +47,10 @@ def _build_handlers(state: AppState) -> dict:
         row = state.sidecar.activity_put(run_id, message)
         state.bus.publish({"type": "activity", **row})
 
+    def note_stage_progress(run_id: str, payload: dict) -> None:
+        # Transient sub-stage ticks (embed batch counts + ETA); SSE only.
+        state.bus.publish({"type": "stage_progress", "run_id": run_id, **payload})
+
     def make_service() -> SurveyService:
         openalex = OpenAlexClient(
             state.sidecar,
@@ -61,6 +65,7 @@ def _build_handlers(state: AppState) -> dict:
         return SurveyService(
             state.sidecar, state.graph, openalex, default_embedder(),
             state.settings, websearch=websearch, on_activity=note_activity,
+            on_stage_progress=note_stage_progress,
         )
 
     def llm() -> "LlmClient":

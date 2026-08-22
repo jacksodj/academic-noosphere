@@ -67,6 +67,15 @@ export function subscribeEvents(onEvent: (event: Record<string, unknown>) => voi
         ts: new Date().toISOString(),
         message: `Citation expansion: ${25 + step * 5}/48 seeds → ${1914 + step * 400} neighbors so far`,
       });
+      onEvent({
+        type: "stage_progress",
+        run_id: runId,
+        stage: "relevance",
+        step: "embed",
+        done: 2000 + step * 4000,
+        total: 21293,
+        eta_s: Math.max(0, 1500 - step * 300),
+      });
     }, 4000);
     return () => clearInterval(timer);
   }
