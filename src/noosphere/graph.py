@@ -68,6 +68,10 @@ class GraphStore:
         self._db = ladybug.Database(str(db_path))
         self._con = ladybug.Connection(self._db)
 
+    def close(self) -> None:
+        """Flush and close the database (checkpoints the WAL)."""
+        self._db.close()
+
     def _execute(self, cypher: str, params: dict[str, Any] | None = None) -> Any:
         if params is None:
             return self._con.execute(cypher)

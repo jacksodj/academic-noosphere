@@ -173,15 +173,10 @@ def assemble_report(run_id: str, sidecar: Any, graph: Any, weights: dict) -> dic
         gap_dicts.append(body)
 
     candidates = sidecar.list_whitespace(coarse_run_id) if coarse_run_id else []
+    # Full WhitespaceCandidate shape — the SPA renders these with the same
+    # components as live candidates (evidence chips etc.).
     examined = [
-        {
-            "whitespace_id": w.whitespace_id,
-            "kind": w.kind,
-            "description": w.description,
-            "reason": w.not_confirmed_reason,
-        }
-        for w in candidates
-        if w.status == "not_confirmed"
+        w.model_dump(mode="json") for w in candidates if w.status == "not_confirmed"
     ]
 
     works_index, communities, community_edges = _communities_block(run_id, sidecar, graph)
@@ -302,7 +297,7 @@ def to_markdown(report: dict) -> str:
     if not examined:
         lines.append("_All whitespace candidates that were zoomed are confirmed._")
     for item in examined:
-        reason = item.get("reason") or "no reason recorded"
+        reason = item.get("not_confirmed_reason") or "no reason recorded"
         lines.append(
             f"- `{item.get('whitespace_id', '?')}` ({item.get('kind', '?')}): "
             f"{item.get('description', '')} — reason: {reason}"

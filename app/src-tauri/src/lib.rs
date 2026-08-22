@@ -134,8 +134,25 @@ pub fn run() {
             let core = app_handle.state::<CoreProcess>();
             let child = core.0.lock().unwrap().take();
             if let Some(mut child) = child {
-                let _ = child.kill();
-                let _ = child.wait();
+                // Graceful first: SIGKILL mid-write corrupts the LadybugDB WAL
+                // (observed repeatedly). SIGTERM lets uvicorn run its lifespan
+                // shutdown (DB close -> WAL checkpoint); SIGKILL only if the
+                // core hasn't exited after the grace window.
+                let _ = Command::new("kill")
+                    .args(["-TERM", &child.id().to_string()])
+                    .status();
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(_)) => break,
+                        _ if std::time::Instant::now() >= deadline => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            break;
+                        }
+                        _ => std::thread::sleep(Duration::from_millis(200)),
+                    }
+                }
             }
         }
     });

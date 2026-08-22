@@ -34,14 +34,14 @@ CREATE TABLE IF NOT EXISTS runs (
     started_at          VARCHAR,
     finished_at         VARCHAR
 );
-CREATE INDEX IF NOT EXISTS idx_runs_field ON runs (field_name);
+DROP INDEX IF EXISTS idx_runs_field;
 
 CREATE TABLE IF NOT EXISTS run_works (
     run_id  VARCHAR NOT NULL,
     work_id VARCHAR NOT NULL,
     PRIMARY KEY (run_id, work_id)
 );
-CREATE INDEX IF NOT EXISTS idx_run_works_run ON run_works (run_id);
+DROP INDEX IF EXISTS idx_run_works_run;
 
 CREATE TABLE IF NOT EXISTS cache (
     key        VARCHAR PRIMARY KEY,
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS whitespace (
     run_id        VARCHAR NOT NULL,
     body          VARCHAR NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_whitespace_run ON whitespace (run_id);
+DROP INDEX IF EXISTS idx_whitespace_run;
 
 CREATE TABLE IF NOT EXISTS gaps (
     gap_id        VARCHAR PRIMARY KEY,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS gaps (
     zoom_run_id   VARCHAR NOT NULL,
     body          VARCHAR NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_gaps_zoom_run ON gaps (zoom_run_id);
+DROP INDEX IF EXISTS idx_gaps_zoom_run;
 
 CREATE TABLE IF NOT EXISTS expansions (
     gap_id  VARCHAR NOT NULL,
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS expansions (
     body    VARCHAR NOT NULL,
     PRIMARY KEY (gap_id, attempt)
 );
-CREATE INDEX IF NOT EXISTS idx_expansions_gap ON expansions (gap_id);
+DROP INDEX IF EXISTS idx_expansions_gap;
 """
 
 _JOB_PENDING_STATUSES = ("pending", "running")

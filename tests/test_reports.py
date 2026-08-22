@@ -255,14 +255,14 @@ class TestAssembleReport:
         assert work_ev["title"] == "Episodic memory for agents"
         assert work_ev["year"] == 2024
         assert len(g1["expansions"]) == 1
-        assert report["examined_not_confirmed"] == [
-            {
-                "whitespace_id": "ws2",
-                "kind": "thin_cell",
-                "description": "forgetting curves for tool-use traces",
-                "reason": "dense at depth",
-            }
-        ]
+        # Full candidate shape (the SPA renders these with the same components
+        # as live candidates — evidence chips, reason, scores).
+        (examined,) = report["examined_not_confirmed"]
+        assert examined["whitespace_id"] == "ws2"
+        assert examined["kind"] == "thin_cell"
+        assert examined["description"] == "forgetting curves for tool-use traces"
+        assert examined["not_confirmed_reason"] == "dense at depth"
+        assert isinstance(examined["evidence"], list)
 
     async def test_report_is_json_able(self, stores) -> None:
         import json

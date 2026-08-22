@@ -6,9 +6,11 @@ import {
   getExpansions,
   getReport,
   getReportMarkdown,
+  getWhitespace,
   listRuns,
   subscribeEvents,
 } from "../endpoints";
+import { parseCandidate } from "../whitespace";
 import type { Gap, GapKind, GapReport, IdeonomyExpansion, Run, WorkRef } from "../types";
 
 const GAP_KINDS: GapKind[] = ["structural", "narrative", "temporal"];
@@ -193,6 +195,33 @@ export default function Report() {
   );
   const runId = runParam ?? zoomRuns[0]?.run_id ?? null;
 
+  // Human labels for the zoom-run picker: candidate topic titles, resolved
+  // from the parent coarse runs' whitespace lists.
+  const [wsTitles, setWsTitles] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const parents = [...new Set(zoomRuns.map((r) => r.parent_run_id).filter(Boolean))];
+    Promise.allSettled(parents.map((p) => getWhitespace(p as string))).then((results) => {
+      const titles: Record<string, string> = {};
+      for (const res of results) {
+        if (res.status !== "fulfilled") continue;
+        for (const c of res.value) titles[c.whitespace_id] = parseCandidate(c).title;
+      }
+      setWsTitles(titles);
+    });
+  }, [zoomRuns]);
+
+  function zoomLabel(r: Run): string {
+    const title = r.whitespace_id ? wsTitles[r.whitespace_id] : undefined;
+    const shortWs = r.whitespace_id?.split("-").pop() ?? r.run_id.slice(0, 8);
+    const date = r.finished_at
+      ? new Date(r.finished_at).toLocaleDateString(undefined, { month: "numeric", day: "numeric" })
+      : "";
+    return title
+      ? `${title} · ${shortWs}${date ? ` · ${date}` : ""}`
+      : `${shortWs} · ${r.run_id.slice(0, 8)}`;
+  }
+
   useEffect(() => {
     listRuns()
       .then(setRuns)
@@ -238,11 +267,20 @@ export default function Report() {
     }
   }
 
-  const gaps = useMemo(() => {
-    if (!report) return [];
-    return [...report.gaps]
-      .filter((g) => g.kinds.some((k) => kindFilter.has(k)))
-      .sort((a, b) => b.composite_score - a.composite_score);
+  // Grade on a curve: the kind filter must never leave the reader with
+  // nothing. Kind-less gaps always show, and if the selected kinds would
+  // hide every gap, fall back to showing all of them with a notice.
+  const { gaps, filterBypassed } = useMemo(() => {
+    if (!report) return { gaps: [], filterBypassed: false };
+    const matching = report.gaps.filter(
+      (g) => g.kinds.length === 0 || g.kinds.some((k) => kindFilter.has(k)),
+    );
+    const bypass = report.gaps.length > 0 && matching.length === 0;
+    const visible = bypass ? report.gaps : matching;
+    return {
+      gaps: [...visible].sort((a, b) => b.composite_score - a.composite_score),
+      filterBypassed: bypass,
+    };
   }, [report, kindFilter]);
 
   return (
@@ -256,7 +294,7 @@ export default function Report() {
               <select value={runId ?? ""} onChange={(e) => setParams({ run: e.target.value })}>
                 {zoomRuns.map((r) => (
                   <option key={r.run_id} value={r.run_id}>
-                    {r.run_id} — {r.whitespace_id ?? "?"}
+                    {zoomLabel(r)}
                   </option>
                 ))}
               </select>
@@ -303,9 +341,20 @@ export default function Report() {
             ))}
           </div>
 
+          {filterBypassed && (
+            <p className="muted">
+              No gaps carry the selected evidence kinds — showing all {gaps.length} so there is
+              always something to reason over.
+            </p>
+          )}
+
           {gaps.length === 0 && (
             <div className="card empty-state">
-              <p>No gaps match the current evidence-kind filter.</p>
+              <h2>No confirmed gaps in this zoom pass</h2>
+              <p>
+                The zoom examined its candidate and did not confirm a gap — see “Examined, not
+                confirmed” below for the reason, or pick another candidate in Triage.
+              </p>
             </div>
           )}
 
@@ -361,7 +410,7 @@ export default function Report() {
                         <div className="not-confirmed-reason">{c.not_confirmed_reason}</div>
                       )}
                       <div className="chip-row">
-                        {c.evidence.map((item, j) => (
+                        {(c.evidence ?? []).map((item, j) => (
                           <EvidenceChip key={j} item={item} works={report.works} />
                         ))}
                       </div>

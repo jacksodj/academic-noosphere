@@ -265,7 +265,12 @@ def main() -> None:
         f.write(handshake + "\n")
     os.replace(tmp_path, hs_path)
     try:
-        uvicorn.run(app, host="127.0.0.1", port=port, access_log=False)
+        uvicorn.run(
+            app, host="127.0.0.1", port=port, access_log=False,
+            # SIGTERM must finish promptly even with SSE streams open, so the
+            # lifespan shutdown (DB close -> WAL checkpoint) actually runs.
+            timeout_graceful_shutdown=5,
+        )
     finally:
         hs_path.unlink(missing_ok=True)
 

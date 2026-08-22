@@ -174,3 +174,4 @@ class AppState:
 
     def close(self) -> None:
         self.sidecar.close()
+        self.graph.close()  # checkpoints the LadybugDB WAL (crash-corruption guard)
