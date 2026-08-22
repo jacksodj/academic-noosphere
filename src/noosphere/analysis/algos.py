@@ -29,14 +29,15 @@ def _build_graph(
 
 
 def louvain_communities(
-    edges: list[tuple[str, str]], nodes: set[str]
+    edges: list[tuple[str, str]], nodes: set[str], resolution: float = 1.0
 ) -> dict[str, int]:
+    """Seeded Louvain; higher ``resolution`` favors more, smaller communities."""
     g, names = _build_graph(edges, nodes, directed=False)
     if not names:
         return {}
     g.simplify()
     igraph.set_random_number_generator(random.Random(_SEED))
-    clustering = g.community_multilevel()
+    clustering = g.community_multilevel(resolution=resolution)
     return {name: clustering.membership[i] for i, name in enumerate(names)}
 
 

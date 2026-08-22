@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EvidenceChip, ScoreBar } from "../components";
-import { getReport, getWhitespace, listRuns, zoomWhitespace } from "../endpoints";
+import {
+  getReport,
+  getWhitespace,
+  listRuns,
+  redetectWhitespace,
+  subscribeEvents,
+  zoomWhitespace,
+} from "../endpoints";
 import type { Run, WhitespaceCandidate, WorkRef } from "../types";
 import { candidateStat, parseCandidate, surpriseScore } from "../whitespace";
 
@@ -92,6 +99,41 @@ export default function Triage() {
     [runId],
   );
 
+  const [redetecting, setRedetecting] = useState(false);
+
+  async function startRedetect() {
+    if (!runId) return;
+    setRedetecting(true);
+    setError(null);
+    try {
+      await redetectWhitespace(runId); // async job; completion arrives via SSE
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setRedetecting(false);
+    }
+  }
+
+  // Refresh on whitespace_updated (re-detection finished); poll fallback.
+  useEffect(() => {
+    if (!runId) return;
+    const refetch = () =>
+      getWhitespace(runId)
+        .then((cs) => {
+          setCandidates(cs);
+          setRedetecting(false);
+        })
+        .catch(() => undefined);
+    const unsubscribe = subscribeEvents((event) => {
+      if (event.type === "whitespace_updated" && event.run_id === runId) refetch();
+    });
+    if (!redetecting) return unsubscribe;
+    const timer = setInterval(refetch, 15000);
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, [runId, redetecting]);
+
   return (
     <section>
       <div className="view-head">
@@ -110,6 +152,15 @@ export default function Triage() {
               ))}
             </select>
           </label>
+        )}
+        {runId && (
+          <button
+            disabled={redetecting}
+            onClick={() => void startRedetect()}
+            title="Re-run whitespace detection over the current graph (adaptive community resolution); zoomed candidates are kept"
+          >
+            {redetecting ? "Re-detecting…" : "Re-detect"}
+          </button>
         )}
       </div>
 

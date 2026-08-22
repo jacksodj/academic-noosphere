@@ -347,6 +347,11 @@ class Sidecar:
             [w.whitespace_id, w.run_id, w.model_dump_json()],
         )
 
+    def delete_whitespace(self, whitespace_id: str) -> None:
+        self._con.execute(
+            "DELETE FROM whitespace WHERE whitespace_id = ?", [whitespace_id]
+        )
+
     def list_whitespace(self, run_id: str) -> list[WhitespaceCandidate]:
         rows = self._con.execute(
             "SELECT body FROM whitespace WHERE run_id = ? ORDER BY whitespace_id",

@@ -113,8 +113,17 @@ def _bridge_evidence(
     return picked[:4]
 
 
+_RESOLUTION_SWEEP = (1.0, 2.0, 4.0, 8.0)
+_DEGENERATE_SHARE = 0.7  # one community holding more than this is a non-split
+
+
 def detect_whitespace(
-    run_id: str, graph: GraphStore, sidecar: Sidecar, *, top_n: int = 12
+    run_id: str,
+    graph: GraphStore,
+    sidecar: Sidecar,
+    *,
+    top_n: int = 12,
+    start_index: int = 0,
 ) -> list[WhitespaceCandidate]:
     """Detect bridge and thin-cell Whitespace Candidates over a coarse run.
 
@@ -135,7 +144,19 @@ def detect_whitespace(
         wid: w.embedding for wid, w in works.items() if w.embedding is not None
     }
     edges = graph.citation_edges(within=snapshot_set)
-    communities = louvain_communities(edges, snapshot_set)
+    # Adaptive resolution: at 1.0 a dense corpus can collapse into one giant
+    # community, which silences the bridge detector entirely (no pairs).
+    # Escalate resolution only while the partition is degenerate (one
+    # community swallowing most of the snapshot); healthy splits keep 1.0.
+    communities: dict[str, int] = {}
+    for resolution in _RESOLUTION_SWEEP:
+        communities = louvain_communities(edges, snapshot_set, resolution=resolution)
+        sizes: dict[int, int] = {}
+        for cid in communities.values():
+            sizes[cid] = sizes.get(cid, 0) + 1
+        largest = max(sizes.values(), default=0)
+        if largest <= _DEGENERATE_SHARE * len(snapshot_set):
+            break
 
     members: dict[int, list[str]] = {}
     for wid in sorted(communities):
@@ -236,10 +257,19 @@ def detect_whitespace(
         )
     )
 
+    # Kind-diverse selection: thin cells with zero observed works score a
+    # perfect sparsity of 1.0 and would crowd every bridge out of the top-N
+    # (bridge scores cap at sim*(1-density) < 1). Reserve up to half the
+    # slots for the best bridges, keep overall ranking order for display.
+    bridge_quota = [c for c in raw if c["kind"] == "bridge"][: max(1, top_n // 2)]
+    cell_quota = [c for c in raw if c["kind"] == "thin_cell"][: top_n - len(bridge_quota)]
+    keep_ids = {id(c) for c in bridge_quota} | {id(c) for c in cell_quota}
+    chosen = [c for c in raw if id(c) in keep_ids][:top_n]
+
     candidates: list[WhitespaceCandidate] = []
-    for i, c in enumerate(raw[:top_n]):
+    for i, c in enumerate(chosen):
         candidate = WhitespaceCandidate(
-            whitespace_id=f"{run_id}-ws{i:03d}",
+            whitespace_id=f"{run_id}-ws{start_index + i:03d}",
             run_id=run_id,
             kind=c["kind"],
             description=c["description"],

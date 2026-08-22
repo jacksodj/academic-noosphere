@@ -218,6 +218,16 @@ export function saveSettings(settings: Settings): Promise<Settings> {
   return put<Settings>("/api/settings", settings);
 }
 
+/**
+ * Queue whitespace re-detection over a coarse run (adaptive community
+ * resolution; zoomed candidates preserved). Async: listen for the
+ * "whitespace_updated" SSE event, then re-fetch getWhitespace.
+ */
+export function redetectWhitespace(runId: string): Promise<{ job_id: string; run_id: string }> {
+  if (apiConfig.mock) return mockDelay({ job_id: "job-mock-redetect", run_id: runId });
+  return post(`/api/runs/${encodeURIComponent(runId)}/redetect`, {});
+}
+
 /** Whitespace Candidates surfaced by a coarse run. */
 export function getWhitespace(runId: string): Promise<WhitespaceCandidate[]> {
   if (apiConfig.mock) return mockDelay(mockWhitespace[runId] ?? []);

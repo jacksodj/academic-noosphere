@@ -140,6 +140,40 @@ def _build_handlers(state: AppState) -> dict:
                            "gap_id": gap.gap_id if gap else None})
         state.bus.publish({"type": "spend", "spend": state.meter.totals()})
 
+    async def redetect_whitespace(payload: dict, checkpoint: Checkpoint) -> None:
+        run = state.sidecar.get_run(payload["run_id"])
+        if run is None:
+            raise ValueError(f"unknown run {payload['run_id']}")
+        note_activity(run.run_id,
+                      "Re-detecting whitespace (adaptive community resolution)")
+        existing = state.sidecar.list_whitespace(run.run_id)
+        kept = [w for w in existing if w.status != "candidate"]
+        stale = [w for w in existing if w.status == "candidate"]
+        next_index = 1 + max(
+            (int(w.whitespace_id.rsplit("ws", 1)[1]) for w in existing), default=-1
+        )
+        fresh = await asyncio.to_thread(
+            detect_whitespace, run.run_id, state.graph, state.sidecar,
+            start_index=next_index,
+        )
+        # Drop re-detections of thin cells that were already zoomed (same
+        # topic); community numbering isn't stable across partitions, so
+        # bridges are always kept as new candidates.
+        zoomed_topics = {w.topic_id for w in kept if w.topic_id}
+        dropped = 0
+        for w in fresh:
+            if w.kind == "thin_cell" and w.topic_id in zoomed_topics:
+                state.sidecar.delete_whitespace(w.whitespace_id)
+                dropped += 1
+        for w in stale:
+            state.sidecar.delete_whitespace(w.whitespace_id)
+        note_activity(
+            run.run_id,
+            f"Re-detection complete: {len(fresh) - dropped} new candidates "
+            f"({len(kept)} zoomed kept, {len(stale)} stale replaced)",
+        )
+        state.bus.publish({"type": "whitespace_updated", "run_id": run.run_id})
+
     async def expand_gap(payload: dict, checkpoint: Checkpoint) -> None:
         gaps = [g for g in state.sidecar.list_gaps() if g.gap_id == payload["gap_id"]]
         if not gaps:
@@ -166,7 +200,7 @@ def _build_handlers(state: AppState) -> dict:
         state.bus.publish({"type": "spend", "spend": state.meter.totals()})
 
     return {"coarse_survey": coarse_survey, "zoom_survey": zoom_survey,
-            "expand_gap": expand_gap}
+            "expand_gap": expand_gap, "redetect_whitespace": redetect_whitespace}
 
 
 async def _supervised_worker(state: "AppState") -> None:

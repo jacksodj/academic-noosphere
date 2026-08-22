@@ -135,6 +135,25 @@ async def run_progress(request: Request, run_id: str) -> dict[str, Any]:
     }
 
 
+@router.post("/runs/{run_id}/redetect", status_code=202)
+async def redetect_whitespace(request: Request, run_id: str) -> dict[str, str]:
+    """Re-run whitespace detection over a coarse run's snapshot.
+
+    Queued job: uses the current graph and adaptive Louvain resolution;
+    already-zoomed candidates (confirmed / zooming / not_confirmed) are kept,
+    pending ones are replaced. Progress lands in the run's activity feed and a
+    "whitespace_updated" event fires when done.
+    """
+    state = _state(request)
+    run = state.sidecar.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    if run.phase != RunPhase.COARSE:
+        raise HTTPException(422, "whitespace detection runs on coarse runs")
+    job_id = state.queue.submit("redetect_whitespace", {"run_id": run_id}, run_id=run_id)
+    return {"job_id": job_id, "run_id": run_id}
+
+
 @router.post("/runs/{run_id}/retry", status_code=202)
 async def retry_run(request: Request, run_id: str) -> Run:
     """Requeue a failed run's job; it resumes from its last checkpoint."""

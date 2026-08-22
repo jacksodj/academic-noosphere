@@ -494,3 +494,21 @@ class TestRunActivity:
 
     def test_activity_404s_for_unknown_run(self, client: TestClient) -> None:
         assert client.get("/api/runs/nope/activity").status_code == 404
+
+
+class TestRedetect:
+    def test_redetect_enqueues_for_coarse_run(self, client: TestClient, state: AppState) -> None:
+        state.sidecar.create_run(make_run("run-rd"))
+        res = client.post("/api/runs/run-rd/retry".replace("retry", "redetect"))
+        assert res.status_code == 202
+        body = res.json()
+        assert body["run_id"] == "run-rd"
+        job = state.sidecar.job_get(body["job_id"])
+        assert job is not None and job["kind"] == "redetect_whitespace"
+
+    def test_redetect_rejects_zoom_runs_and_unknown(
+        self, client: TestClient, state: AppState
+    ) -> None:
+        state.sidecar.create_run(make_run("run-z", phase=RunPhase.ZOOM))
+        assert client.post("/api/runs/run-z/redetect").status_code == 422
+        assert client.post("/api/runs/nope/redetect").status_code == 404
