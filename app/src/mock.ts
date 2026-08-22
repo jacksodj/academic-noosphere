@@ -82,7 +82,7 @@ export const mockSettings: Settings = {
   gateway_url: "https://example-gateway.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
   web_search_enabled: true,
   opus_model: "anthropic.claude-opus-5",
-  haiku_model: "anthropic.claude-haiku-4-5",
+  haiku_model: "anthropic.claude-haiku-4-5-20251001-v1:0",
   coarse_corpus_target: 8000,
   relevance_threshold: 0.35,
   ranking_weights: {
@@ -535,7 +535,7 @@ export const mockCredentials: CredentialStatus[] = [
 export const mockSpend: SpendSummary = {
   models: {
     "anthropic.claude-opus-5": { input: 1_310_000, output: 130_400, est_usd: 9.81 },
-    "anthropic.claude-haiku-4-5": { input: 1_820_000, output: 168_000, est_usd: 2.66 },
+    "anthropic.claude-haiku-4-5-20251001-v1:0": { input: 1_820_000, output: 168_000, est_usd: 2.66 },
   },
   total: { input: 3_130_000, output: 298_400, est_usd: 12.47 },
 };

@@ -109,8 +109,12 @@ class Settings:
     aws_region: str = "us-east-1"
     gateway_url: str | None = None  # AgentCore Gateway MCP endpoint
     web_search_enabled: bool = True  # spike verdict HEALTHY -> narrative booster ON
-    opus_model: str = "anthropic.claude-opus-5"
-    haiku_model: str = "anthropic.claude-haiku-4-5"
+    # Classic bedrock-runtime ids need the `us.` cross-region inference-profile
+    # prefix. Opus 5 / Sonnet 5 / Opus 4.8 are not yet entitled on this account
+    # (probed 2026-08-22) — Opus 4.6 is the strongest invocable synthesis model;
+    # bump these in Settings once newer models are enabled in the Bedrock console.
+    opus_model: str = "us.anthropic.claude-opus-4-6-v1"
+    haiku_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     coarse_corpus_target: int = 8000  # ~5-10k soft target for Phase 1
     relevance_threshold: float = 0.35
     ranking_weights: dict[str, float] = field(default_factory=lambda: {

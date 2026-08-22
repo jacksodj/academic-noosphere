@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from noosphere import __version__
 from noosphere.api import AppState, router
 from noosphere.config import Settings, data_dir, get_credential
+from noosphere.models import RunStatus
 from noosphere.pipeline.queue import Checkpoint
 
 _token: str = ""
@@ -71,7 +72,12 @@ def _build_handlers(state: AppState) -> dict:
         )
 
     def llm() -> "LlmClient":
-        return LlmClient(state.settings.aws_region, state.meter)
+        return LlmClient(
+            state.settings.aws_region,
+            state.meter,
+            haiku_model=state.settings.haiku_model,
+            opus_model=state.settings.opus_model,
+        )
 
     def note_missing_credentials(run_id: str) -> None:
         if not get_credential("openalex_api_key") and not get_credential("crossref_mailto"):
@@ -104,7 +110,25 @@ def _build_handlers(state: AppState) -> dict:
             raise ValueError(f"unknown whitespace {payload['whitespace_id']}")
         candidate = parent_ws[0]
         await make_service().run_zoom(run, candidate, checkpoint)
-        gap = await confirm_candidate(candidate, run.run_id, state.graph, state.sidecar, llm())
+        note_activity(run.run_id,
+                      f"Confirming candidate — gap synthesis via Bedrock "
+                      f"({state.settings.haiku_model} / {state.settings.opus_model})")
+        try:
+            gap = await confirm_candidate(
+                candidate, run.run_id, state.graph, state.sidecar, llm()
+            )
+        except Exception as exc:
+            # The survey half already marked the run completed; without this the
+            # failure is invisible (blank gaps, candidate stuck "zooming").
+            note_activity(run.run_id, f"Gap confirmation failed: {type(exc).__name__}: {exc}")
+            candidate.status = "candidate"
+            state.sidecar.put_whitespace(candidate)
+            state.sidecar.update_run(run.run_id, status=RunStatus.FAILED)
+            raise
+        note_activity(
+            run.run_id,
+            f"Candidate {'confirmed — gap recorded' if gap else 'not confirmed'}"
+        )
         state.bus.publish({"type": "zoom_completed", "run_id": run.run_id,
                            "whitespace_id": candidate.whitespace_id,
                            "confirmed": gap is not None,

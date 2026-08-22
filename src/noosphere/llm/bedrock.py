@@ -86,22 +86,38 @@ def _parse_json(text: str) -> Any:
 
 
 class LlmClient:
-    """Async wrapper over ``anthropic.AnthropicBedrockMantle``.
+    """Async wrapper over ``anthropic.AnthropicBedrock``.
+
+    Uses the classic bedrock-runtime (InvokeModel) client, not the newer
+    Mantle endpoint: probed 2026-08-22, this account's entitlements cover the
+    classic path (with ``us.`` inference-profile ids) while every model 403s
+    on Mantle. Revisit once Mantle access is enabled on the account.
 
     The real client is constructed lazily on first use; ``transport`` injection
     replaces it for tests (anything exposing a compatible ``messages.create``).
     """
 
-    def __init__(self, region: str, meter: SpendMeter, transport: Any = None) -> None:
+    def __init__(
+        self,
+        region: str,
+        meter: SpendMeter,
+        transport: Any = None,
+        haiku_model: str | None = None,
+        opus_model: str | None = None,
+    ) -> None:
         self._region = region
         self.meter = meter
         self._transport = transport
+        # Configured model ids (Settings screen) — the Settings class attrs are
+        # only the last-resort default, not the live user configuration.
+        self._haiku_model = haiku_model or Settings.haiku_model
+        self._opus_model = opus_model or Settings.opus_model
 
     def _client(self) -> Any:
         if self._transport is None:
             import anthropic
 
-            self._transport = anthropic.AnthropicBedrockMantle(aws_region=self._region)
+            self._transport = anthropic.AnthropicBedrock(aws_region=self._region)
         return self._transport
 
     async def _request_text(
@@ -140,19 +156,19 @@ class LlmClient:
         self, system: str, user: str, max_tokens: int = 2048, model: str | None = None
     ) -> dict:
         return await self._request_json(
-            model or Settings.haiku_model, system, user, max_tokens
+            model or self._haiku_model, system, user, max_tokens
         )
 
     async def opus_json(
         self, system: str, user: str, max_tokens: int = 8192, model: str | None = None
     ) -> dict:
         return await self._request_json(
-            model or Settings.opus_model, system, user, max_tokens
+            model or self._opus_model, system, user, max_tokens
         )
 
     async def opus_text(
         self, system: str, user: str, max_tokens: int = 8192, model: str | None = None
     ) -> str:
         return await self._request_text(
-            model or Settings.opus_model, system, user, max_tokens
+            model or self._opus_model, system, user, max_tokens
         )

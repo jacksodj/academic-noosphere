@@ -333,7 +333,7 @@ export function subscribeSpend(onSpend: (spend: SpendSummary) => void): () => vo
   if (apiConfig.mock) {
     const timer = setInterval(() => {
       mockSpend.total.est_usd += 0.03;
-      mockSpend.models["anthropic.claude-haiku-4-5"].est_usd += 0.03;
+      mockSpend.models["anthropic.claude-haiku-4-5-20251001-v1:0"].est_usd += 0.03;
       push(structuredClone(mockSpend));
     }, 5000);
     return () => {
