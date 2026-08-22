@@ -42,6 +42,8 @@ class SidecarJobs(Protocol):
 
     def jobs_pending(self) -> list[dict[str, Any]]: ...
 
+    def job_failed_for_run(self, run_id: str) -> dict[str, Any] | None: ...
+
 
 class Checkpoint:
     """Handler-facing view of one job's persisted checkpoint."""
@@ -73,6 +75,22 @@ class JobQueue:
         job_id = str(uuid.uuid4())
         self._sidecar.job_put(job_id, kind, payload, "pending", run_id)
         return job_id
+
+    def retry_run(self, run_id: str) -> dict[str, Any] | None:
+        """Requeue the newest failed job for ``run_id``.
+
+        The stored checkpoint (minus its "error" key) is kept, so the handler
+        resumes from where it got to — handlers are idempotent from their
+        checkpoint by contract. Returns the requeued job, or None if the run
+        has no failed job. The live worker picks it up within its poll tick.
+        """
+        job = self._sidecar.job_failed_for_run(run_id)
+        if job is None:
+            return None
+        checkpoint = dict(job.get("checkpoint") or {})
+        checkpoint.pop("error", None)
+        self._sidecar.job_update(job["job_id"], status="pending", checkpoint=checkpoint)
+        return {**job, "status": "pending", "checkpoint": checkpoint}
 
     async def worker(
         self, handlers: dict[str, Handler], poll_s: float = 0.5

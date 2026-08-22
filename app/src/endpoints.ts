@@ -36,6 +36,17 @@ export function listRuns(): Promise<Run[]> {
   return get<Run[]>("/api/runs");
 }
 
+/** Requeue a failed run's job; it resumes from its last checkpoint. */
+export function retryRun(runId: string): Promise<Run> {
+  if (apiConfig.mock) {
+    const run = mockRuns.find((r) => r.run_id === runId);
+    if (!run) throw new Error(`unknown run ${runId}`);
+    run.status = "pending";
+    return mockDelay({ ...run });
+  }
+  return post<Run>(`/api/runs/${runId}/retry`, {});
+}
+
 export function createSurvey(req: NewSurveyRequest): Promise<Run> {
   if (apiConfig.mock) {
     const run: Run = {

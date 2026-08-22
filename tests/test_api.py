@@ -28,6 +28,7 @@ from noosphere.models import (
     IdeonomyTuple,
     Run,
     RunPhase,
+    RunStatus,
     WhitespaceCandidate,
 )
 
@@ -385,3 +386,32 @@ def test_survey_event_published(client: TestClient, state: AppState) -> None:
         assert event["phase"] == "coarse"
     finally:
         state.bus.detach(queue)
+
+
+class TestRetryRun:
+    def test_retry_requeues_failed_job(self, client: TestClient, state: AppState) -> None:
+        state.sidecar.create_run(make_run("run-f", status=RunStatus.FAILED))
+        state.sidecar.job_put(
+            "job-f", "coarse_survey", {"run_id": "run-f"}, "failed", "run-f"
+        )
+        state.sidecar.job_update(
+            "job-f", checkpoint={"step": 3, "error": "RuntimeError: boom"}
+        )
+
+        res = client.post("/api/runs/run-f/retry")
+        assert res.status_code == 202
+        assert res.json()["status"] == "pending"
+
+        job = state.sidecar.job_get("job-f")
+        assert job is not None
+        assert job["status"] == "pending"
+        assert job["checkpoint"] == {"step": 3}  # error stripped, progress kept
+
+    def test_retry_without_failed_job_conflicts(
+        self, client: TestClient, state: AppState
+    ) -> None:
+        state.sidecar.create_run(make_run("run-ok"))
+        assert client.post("/api/runs/run-ok/retry").status_code == 409
+
+    def test_retry_unknown_run_404s(self, client: TestClient) -> None:
+        assert client.post("/api/runs/nope/retry").status_code == 404

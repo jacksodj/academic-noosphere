@@ -30,6 +30,7 @@ from noosphere.models import (
     IdeonomyExpansion,
     Run,
     RunPhase,
+    RunStatus,
     WhitespaceCandidate,
 )
 
@@ -102,6 +103,22 @@ async def put_settings(
     request: Request, body: dict[str, Any] = Body(...)
 ) -> dict[str, Any]:
     return settings_to_dict(_state(request).update_settings(body))
+
+
+@router.post("/runs/{run_id}/retry", status_code=202)
+async def retry_run(request: Request, run_id: str) -> Run:
+    """Requeue a failed run's job; it resumes from its last checkpoint."""
+    state = _state(request)
+    run = state.sidecar.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    if state.queue.retry_run(run_id) is None:
+        raise HTTPException(409, f"run {run_id} has no failed job to retry")
+    state.sidecar.update_run(run_id, status=RunStatus.PENDING)
+    state.bus.publish({"type": "run_requeued", "run_id": run_id})
+    updated = state.sidecar.get_run(run_id)
+    assert updated is not None
+    return updated
 
 
 # -- credentials (Keychain-backed; values are write-only) --------------------

@@ -256,6 +256,15 @@ class Sidecar:
         ).fetchone()
         return self._job_from_row(row) if row is not None else None
 
+    def job_failed_for_run(self, run_id: str) -> dict | None:
+        """Newest failed job for a run (retry target)."""
+        row = self._con.execute(
+            "SELECT * FROM jobs WHERE run_id = ? AND status = 'failed' "
+            "ORDER BY seq DESC LIMIT 1",
+            [run_id],
+        ).fetchone()
+        return self._job_from_row(row) if row is not None else None
+
     def jobs_pending(self) -> list[dict]:
         rows = self._con.execute(
             "SELECT * FROM jobs WHERE status IN (?, ?) ORDER BY seq",

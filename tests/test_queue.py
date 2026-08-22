@@ -58,6 +58,16 @@ class FakeSidecar:
         live = (j for j in self.jobs.values() if j["status"] in ("pending", "running"))
         return [dict(j) for j in sorted(live, key=lambda j: j["seq"])]
 
+    def job_failed_for_run(self, run_id: str) -> dict[str, Any] | None:
+        failed = [
+            j
+            for j in self.jobs.values()
+            if j["status"] == "failed" and j["run_id"] == run_id
+        ]
+        if not failed:
+            return None
+        return dict(max(failed, key=lambda j: j["seq"]))
+
 
 async def wait_until(predicate: Callable[[], bool], timeout: float = 2.0) -> None:
     async with asyncio.timeout(timeout):
@@ -184,3 +194,30 @@ async def test_cancellation_returns_in_flight_job_to_pending() -> None:
 
     assert sidecar.jobs[job_id]["status"] == "pending"
     assert sidecar.jobs[job_id]["checkpoint"] == {"phase": "started"}
+
+
+async def test_retry_run_requeues_failed_job_from_checkpoint() -> None:
+    sidecar = FakeSidecar()
+    queue = JobQueue(sidecar)
+    attempts: list[dict[str, Any] | None] = []
+
+    async def flaky(payload: dict[str, Any], checkpoint: Checkpoint) -> None:
+        attempts.append(checkpoint.get())
+        if len(attempts) == 1:
+            checkpoint.save({"step": 2})
+            raise RuntimeError("transient")
+
+    job_id = queue.submit("flaky", {}, run_id="run-1")
+
+    async with running_worker(queue, {"flaky": flaky}):
+        await wait_until(lambda: sidecar.jobs[job_id]["status"] == "failed")
+        assert sidecar.jobs[job_id]["checkpoint"] == {"step": 2, "error": "RuntimeError: transient"}
+
+        requeued = queue.retry_run("run-1")
+        assert requeued is not None and requeued["status"] == "pending"
+        await wait_until(lambda: sidecar.jobs[job_id]["status"] == "done")
+
+    # second attempt resumed from the checkpoint, error key stripped
+    assert attempts == [None, {"step": 2}]
+    assert queue.retry_run("run-1") is None  # nothing failed anymore
+    assert queue.retry_run("no-such-run") is None

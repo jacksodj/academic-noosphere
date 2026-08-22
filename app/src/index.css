@@ -868,3 +868,9 @@ button.subtle {
 .onboarding-actions {
   margin-top: 0.5rem;
 }
+
+.retry-btn {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+}

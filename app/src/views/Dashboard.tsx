@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiConfig } from "../api";
-import { createSurvey, listRuns } from "../endpoints";
+import { createSurvey, listRuns, retryRun } from "../endpoints";
 import type { Run } from "../types";
 
 function fmt(iso: string | null): string {
@@ -27,6 +27,21 @@ export default function Dashboard() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const [retrying, setRetrying] = useState<string | null>(null);
+
+  async function retry(runId: string) {
+    setRetrying(runId);
+    setError(null);
+    try {
+      await retryRun(runId);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRetrying(null);
+    }
+  }
 
   async function submitSurvey(e: React.FormEvent) {
     e.preventDefault();
@@ -126,6 +141,16 @@ export default function Dashboard() {
                   </td>
                   <td>
                     <span className={`badge status-${r.status}`}>{r.status}</span>
+                    {r.status === "failed" && (
+                      <button
+                        className="subtle retry-btn"
+                        disabled={retrying === r.run_id}
+                        onClick={() => void retry(r.run_id)}
+                        title="Requeue this run; it resumes from its last checkpoint"
+                      >
+                        {retrying === r.run_id ? "Retrying…" : "Retry"}
+                      </button>
+                    )}
                   </td>
                   <td>{fmt(r.started_at)}</td>
                   <td>{fmt(r.finished_at)}</td>
