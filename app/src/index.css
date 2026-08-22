@@ -874,3 +874,11 @@ button.subtle {
   font-size: 0.8rem;
   padding: 0.1rem 0.5rem;
 }
+
+/* Long free-text cells (field names): clip with ellipsis instead of widening
+   the table past the page and hiding columns behind the overlay scrollbar. */
+td.cell-clip {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

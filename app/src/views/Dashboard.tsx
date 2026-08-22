@@ -4,7 +4,14 @@ import { createSurvey, listRuns, retryRun } from "../endpoints";
 import type { Run } from "../types";
 
 function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : "—";
+  return iso
+    ? new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+    : "—";
+}
+
+/** UUIDs blow up the table; show the first block, full id on hover. */
+function shortId(id: string): string {
+  return id.length > 12 ? id.slice(0, 8) : id;
 }
 
 export default function Dashboard() {
@@ -133,8 +140,12 @@ export default function Dashboard() {
             <tbody>
               {runs.map((r) => (
                 <tr key={r.run_id}>
-                  <td className="mono">{r.run_id}</td>
-                  <td>{r.field_name}</td>
+                  <td className="mono" title={r.run_id}>
+                    {shortId(r.run_id)}
+                  </td>
+                  <td className="cell-clip" title={r.field_name}>
+                    {r.field_name}
+                  </td>
                   <td>
                     {r.phase}
                     {r.whitespace_id && <span className="muted"> → {r.whitespace_id}</span>}

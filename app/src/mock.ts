@@ -62,6 +62,18 @@ export const mockRuns: Run[] = [
     started_at: null,
     finished_at: null,
   },
+  {
+    // realistic uuid id: the dashboard table must fit these (retry button row)
+    run_id: "e247eaac-8fe2-4f38-a583-2783e61bb9ee",
+    field_name: "memory for AI agents",
+    phase: "coarse",
+    parent_run_id: null,
+    whitespace_id: null,
+    query_manifest_hash: null,
+    status: "failed",
+    started_at: "2026-08-22T13:37:33Z",
+    finished_at: null,
+  },
 ];
 
 export const mockSettings: Settings = {
