@@ -22,6 +22,11 @@ evidence). The v1 implementation now lives in this repo:
 - Optional extras: `uv sync --extra embed` (SPECTER2 local embeddings),
   `--extra websearch` (AgentCore Gateway discovery client).
 
+**Full install / configure / run instructions — including credentials
+(Keychain names + env overrides), AWS + Gateway setup, the first-Survey
+walkthrough, and troubleshooting — live in
+[`docs/getting-started.md`](docs/getting-started.md).**
+
 The wayfinder map remains the decision record:
 
 - **Map**: [Wayfinder map: Academic Noosphere — Mac-local research mapping app](https://github.com/jacksodj/academic-noosphere/issues/1)
