@@ -177,6 +177,7 @@ def make_service(
     settings: Settings,
     embedder=None,
     websearch=None,
+    on_activity=None,
 ) -> SurveyService:
     return SurveyService(
         sidecar=sidecar,
@@ -185,6 +186,7 @@ def make_service(
         embedder=embedder or StubEmbedder(),
         settings=settings,
         websearch=websearch,
+        on_activity=on_activity,
     )
 
 
@@ -524,3 +526,30 @@ async def test_websearch_client_missing_extra_raises_clear_error() -> None:
     client = WebSearchClient("https://gw.example/mcp", "us-east-1")
     with pytest.raises(RuntimeError, match="websearch"):
         await client.search("query")
+
+
+async def test_activities_emitted_through_pipeline(
+    sidecar: Sidecar, graph: GraphStore
+) -> None:
+    fake = FakeOpenAlex()
+    s1 = fake.add(raw_work("W1", "agent memory survey", topics=("T1",)))
+    fake.add(raw_work("W2", "consolidation in agents", topics=("T1",)))
+    fake.search_results = {"q1": [s1]}
+    fake.links = {"W1": ([], ["W2"])}
+
+    lines: list[tuple[str, str]] = []
+    service = make_service(
+        sidecar, graph, fake, Settings(), on_activity=lambda rid, msg: lines.append((rid, msg))
+    )
+    run = make_run(sidecar)
+    await service.run_coarse(run, ["q1"], make_checkpoint(sidecar))
+
+    assert lines, "no activities emitted"
+    assert all(rid == run.run_id for rid, _ in lines)
+    text = "\n".join(msg for _, msg in lines)
+    assert "Survey started" in text
+    assert "OpenAlex search 'q1'" in text
+    assert "Survey completed" in text
+    # stages announce themselves in order
+    stages = [m for _, m in lines if "stage complete" in m or "Relevance filter" in m]
+    assert len(stages) >= 3

@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
 
+CREATE SEQUENCE IF NOT EXISTS activities_seq;
+CREATE TABLE IF NOT EXISTS activities (
+    run_id  VARCHAR NOT NULL,
+    seq     BIGINT  NOT NULL,
+    ts      VARCHAR NOT NULL,
+    message VARCHAR NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activities_run ON activities (run_id);
+
 CREATE TABLE IF NOT EXISTS whitespace (
     whitespace_id VARCHAR PRIMARY KEY,
     run_id        VARCHAR NOT NULL,
@@ -255,6 +264,27 @@ class Sidecar:
             "SELECT * FROM jobs WHERE job_id = ?", [job_id]
         ).fetchone()
         return self._job_from_row(row) if row is not None else None
+
+    def activity_put(self, run_id: str, message: str) -> dict:
+        """Append one activity line for a run; returns the stored row."""
+        ts = _now_iso()
+        seq = self._con.execute("SELECT nextval('activities_seq')").fetchone()[0]
+        self._con.execute(
+            "INSERT INTO activities VALUES (?, ?, ?, ?)", [run_id, seq, ts, message]
+        )
+        return {"run_id": run_id, "seq": seq, "ts": ts, "message": message}
+
+    def activities_for_run(self, run_id: str, limit: int = 1000) -> list[dict]:
+        """Activity lines for a run, oldest-first (last ``limit`` entries)."""
+        rows = self._con.execute(
+            "SELECT run_id, seq, ts, message FROM ("
+            "  SELECT * FROM activities WHERE run_id = ? ORDER BY seq DESC LIMIT ?"
+            ") ORDER BY seq",
+            [run_id, limit],
+        ).fetchall()
+        return [
+            {"run_id": r[0], "seq": r[1], "ts": r[2], "message": r[3]} for r in rows
+        ]
 
     def job_for_run(self, run_id: str) -> dict | None:
         """Newest job for a run, any status (progress reporting)."""

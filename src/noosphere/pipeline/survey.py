@@ -79,6 +79,7 @@ class SurveyService:
         embedder: Embedder,
         settings: Settings,
         websearch: WebSearchClient | None = None,
+        on_activity: Callable[[str, str], None] | None = None,
     ) -> None:
         self._sidecar = sidecar
         self._graph = graph
@@ -86,6 +87,13 @@ class SurveyService:
         self._embedder = embedder
         self._settings = settings
         self._websearch = websearch
+        self._on_activity = on_activity
+        self._active_run_id: str | None = None
+
+    def _note(self, message: str) -> None:
+        """Emit one human-readable activity line for the active run."""
+        if self._on_activity is not None and self._active_run_id is not None:
+            self._on_activity(self._active_run_id, message)
 
     # -- public entry points ---------------------------------------------------
 
@@ -116,8 +124,13 @@ class SurveyService:
     async def _execute(
         self, run: Run, checkpoint: Checkpoint, seed_loader: SeedLoader, cap: int | None
     ) -> None:
+        self._active_run_id = run.run_id
         state: dict[str, Any] = checkpoint.get() or {}
         done: list[str] = list(state.get("done", []))
+        if done:
+            self._note(f"Resuming from checkpoint — stages done: {', '.join(done)}")
+        else:
+            self._note(f"Survey started ({run.phase} pass)")
         if not done:
             self._sidecar.update_run(
                 run.run_id,
@@ -135,9 +148,11 @@ class SurveyService:
                 state, done, checkpoint, seed_ids, candidate_ids, works, cap
             )
             await self._stage_persist(state, done, checkpoint, run, kept_ids, works, vectors)
-        except Exception:
+        except Exception as exc:
+            self._note(f"Run failed: {type(exc).__name__}: {exc}")
             self._sidecar.update_run(run.run_id, status=RunStatus.FAILED)
             raise
+        self._note("Survey completed")
         self._sidecar.update_run(
             run.run_id,
             status=RunStatus.COMPLETED,
@@ -157,6 +172,7 @@ class SurveyService:
         for raw in await seed_loader():
             works[short_id(raw["id"])] = raw
         seed_ids = sorted(works)
+        self._note(f"Seed stage complete: {len(seed_ids)} unique works")
         state["seed_ids"] = seed_ids
         done.append("seeds")
         state["done"] = done
@@ -174,16 +190,24 @@ class SurveyService:
         if "expand" in done:
             return list(state["candidate_ids"])
         await self._hydrate(works, seed_ids)
+        self._note(f"Citation expansion: walking references/citations of {len(seed_ids)} seeds")
         neighbors: set[str] = set()
-        for sid in seed_ids:
+        for i, sid in enumerate(seed_ids, 1):
             referenced, citing = await self._openalex.referenced_and_citing(sid)
             neighbors.update(referenced)
             neighbors.update(citing)
+            if i % 25 == 0 or i == len(seed_ids):
+                self._note(
+                    f"Citation expansion: {i}/{len(seed_ids)} seeds → "
+                    f"{len(neighbors)} neighbors so far"
+                )
         missing = sorted(n for n in neighbors if n not in works)
         if missing:
+            self._note(f"Fetching metadata for {len(missing)} expansion works")
             for raw in await self._openalex.works_batch(missing):
                 works[short_id(raw["id"])] = raw
         candidate_ids = sorted(works)
+        self._note(f"Expand stage complete: {len(candidate_ids)} candidate works")
         state["candidate_ids"] = candidate_ids
         done.append("expand")
         state["done"] = done
@@ -204,6 +228,7 @@ class SurveyService:
             return list(state["kept_ids"]), None
         await self._hydrate(works, candidate_ids)
         present = [wid for wid in candidate_ids if wid in works]
+        self._note(f"Embedding {len(present)} abstracts (this is the long stage)")
         embedded = await asyncio.to_thread(
             self._embedder.embed, [embed_text(works[w]) for w in present]
         )
@@ -227,6 +252,10 @@ class SurveyService:
         kept.sort(key=lambda wid: similarity[wid], reverse=True)
         if cap is not None:
             kept = kept[:cap]
+        self._note(
+            f"Relevance filter kept {len(kept)} of {len(present)} works "
+            f"(threshold {self._settings.relevance_threshold})"
+        )
         state["kept_ids"] = kept
         done.append("relevance")
         state["done"] = done
@@ -252,6 +281,7 @@ class SurveyService:
                 self._embedder.embed, [embed_text(works[w]) for w in kept]
             )
             vectors = dict(zip(kept, embedded))
+        self._note(f"Persisting {len(kept)} works to graph + sidecar")
         self._persist(run, works, kept, vectors)
         done.append("persist")
         state["done"] = done
@@ -261,6 +291,8 @@ class SurveyService:
         missing = [i for i in ids if i not in works]
         if not missing:
             return
+        if len(missing) > 100:
+            self._note(f"Hydrating metadata for {len(missing)} works from OpenAlex")
         for raw in await self._openalex.works_batch(missing):
             works[short_id(raw["id"])] = raw
 
@@ -269,12 +301,14 @@ class SurveyService:
     async def _coarse_seeds(self, seed_queries: list[str]) -> list[dict]:
         raws: list[dict] = []
         for query in seed_queries:
-            raws.extend(
-                await self._openalex.works_search(query, per_page=SEED_SEARCH_PER_PAGE)
-            )
+            found = await self._openalex.works_search(query, per_page=SEED_SEARCH_PER_PAGE)
+            self._note(f"OpenAlex search {query!r} → {len(found)} works")
+            raws.extend(found)
         if self._settings.web_search_enabled and self._websearch is not None:
             for query in seed_queries:
-                raws.extend(await self._discover(query))
+                resolved = await self._discover(query)
+                self._note(f"Web Search discovery {query!r} → {len(resolved)} resolved works")
+                raws.extend(resolved)
         return raws
 
     async def _discover(self, query: str) -> list[dict]:

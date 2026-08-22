@@ -105,6 +105,20 @@ async def put_settings(
     return settings_to_dict(_state(request).update_settings(body))
 
 
+@router.get("/runs/{run_id}/activity")
+async def run_activity(
+    request: Request, run_id: str, limit: int = 1000
+) -> dict[str, Any]:
+    """Persisted activity lines for a run, oldest-first (live tail via SSE)."""
+    state = _state(request)
+    if state.sidecar.get_run(run_id) is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    return {
+        "run_id": run_id,
+        "activities": state.sidecar.activities_for_run(run_id, limit=limit),
+    }
+
+
 @router.get("/runs/{run_id}/progress")
 async def run_progress(request: Request, run_id: str) -> dict[str, Any]:
     """Stage-level progress for a run, derived from its job's checkpoint."""

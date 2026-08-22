@@ -148,6 +148,14 @@ export interface RunProgress {
   error: string | null;
 }
 
+/** One persisted activity line (GET /api/runs/{id}/activity + SSE "activity"). */
+export interface RunActivity {
+  run_id: string;
+  seq: number;
+  ts: string;
+  message: string;
+}
+
 /** POST /api/surveys request body (endpoint lands in wave 2). */
 export interface NewSurveyRequest {
   field_name: string;

@@ -468,3 +468,29 @@ class TestRunProgress:
                 },
             }
         ]
+
+
+class TestRunActivity:
+    def test_activity_roundtrip_and_order(self, client: TestClient, state: AppState) -> None:
+        state.sidecar.create_run(make_run("run-a"))
+        first = state.sidecar.activity_put("run-a", "Survey started (coarse pass)")
+        state.sidecar.activity_put("run-a", "OpenAlex search 'x' → 25 works")
+        state.sidecar.activity_put("run-other", "unrelated")
+        assert first["seq"] > 0 and first["ts"]
+
+        body = client.get("/api/runs/run-a/activity").json()
+        messages = [a["message"] for a in body["activities"]]
+        assert messages == [
+            "Survey started (coarse pass)",
+            "OpenAlex search 'x' → 25 works",
+        ]
+
+    def test_activity_limit_keeps_newest(self, client: TestClient, state: AppState) -> None:
+        state.sidecar.create_run(make_run("run-b"))
+        for i in range(5):
+            state.sidecar.activity_put("run-b", f"line {i}")
+        body = client.get("/api/runs/run-b/activity?limit=2").json()
+        assert [a["message"] for a in body["activities"]] == ["line 3", "line 4"]
+
+    def test_activity_404s_for_unknown_run(self, client: TestClient) -> None:
+        assert client.get("/api/runs/nope/activity").status_code == 404

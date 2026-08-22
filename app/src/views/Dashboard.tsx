@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiConfig } from "../api";
 import { createSurvey, getRunProgress, listRuns, retryRun, subscribeEvents } from "../endpoints";
 import type { Run, RunProgress } from "../types";
@@ -184,10 +185,12 @@ export default function Dashboard() {
               {runs.map((r) => (
                 <tr key={r.run_id}>
                   <td className="mono" title={r.run_id}>
-                    {shortId(r.run_id)}
+                    <Link to={`/runs/${r.run_id}`}>{shortId(r.run_id)}</Link>
                   </td>
                   <td className="cell-clip" title={r.field_name}>
-                    {r.field_name}
+                    <Link to={`/runs/${r.run_id}`} className="plain-link">
+                      {r.field_name}
+                    </Link>
                   </td>
                   <td>
                     {r.phase}

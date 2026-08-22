@@ -7,6 +7,7 @@ import Dashboard from "./views/Dashboard";
 import Explorer from "./views/Explorer";
 import Onboarding from "./views/Onboarding";
 import Report from "./views/Report";
+import RunDetail from "./views/RunDetail";
 import Settings from "./views/Settings";
 import Triage from "./views/Triage";
 
@@ -74,6 +75,7 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/runs/:runId" element={<RunDetail />} />
           <Route path="/triage" element={<Triage />} />
           <Route path="/report" element={<Report />} />
           <Route path="/explorer" element={<Explorer />} />

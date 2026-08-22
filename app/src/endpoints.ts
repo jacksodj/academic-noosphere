@@ -21,6 +21,7 @@ import type {
   AwsCheckResult,
   CredentialStatus,
   Gap,
+  RunActivity,
   RunProgress,
   GapReport,
   IdeonomyExpansion,
@@ -47,9 +48,10 @@ export function subscribeEvents(onEvent: (event: Record<string, unknown>) => voi
     const stages = ["seeds", "expand", "relevance", "persist"];
     const timer = setInterval(() => {
       step = (step + 1) % 5;
+      const runId = mockRuns.find((r) => r.status === "running")?.run_id ?? "run-0002";
       onEvent({
         type: "progress",
-        run_id: mockRuns.find((r) => r.status === "running")?.run_id ?? "run-0002",
+        run_id: runId,
         progress: {
           stages,
           done: stages.slice(0, step),
@@ -57,6 +59,13 @@ export function subscribeEvents(onEvent: (event: Record<string, unknown>) => voi
           counts: { seeds: 40, candidates: 40 + step * 900, kept: step > 2 ? 3100 : 0 },
           error: null,
         },
+      });
+      onEvent({
+        type: "activity",
+        run_id: runId,
+        seq: 100 + step,
+        ts: new Date().toISOString(),
+        message: `Citation expansion: ${25 + step * 5}/48 seeds → ${1914 + step * 400} neighbors so far`,
       });
     }, 4000);
     return () => clearInterval(timer);
@@ -69,6 +78,33 @@ export function subscribeEvents(onEvent: (event: Record<string, unknown>) => voi
       // non-JSON event; ignore
     }
   });
+}
+
+/** Persisted activity lines for a run, oldest-first (live tail via SSE). */
+export function getRunActivity(
+  runId: string,
+): Promise<{ run_id: string; activities: RunActivity[] }> {
+  if (apiConfig.mock) {
+    const base = Date.now() - 90_000;
+    return mockDelay({
+      run_id: runId,
+      activities: [
+        "Survey started (coarse pass)",
+        "OpenAlex search 'Agentic Memory Architecture' → 25 works",
+        "OpenAlex search 'episodic memory consolidation' → 25 works",
+        "Web Search discovery 'Agentic Memory Architecture' → 6 resolved works",
+        "Seed stage complete: 48 unique works",
+        "Citation expansion: walking references/citations of 48 seeds",
+        "Citation expansion: 25/48 seeds → 1,914 neighbors so far",
+      ].map((message, i) => ({
+        run_id: runId,
+        seq: i + 1,
+        ts: new Date(base + i * 12_000).toISOString(),
+        message,
+      })),
+    });
+  }
+  return get(`/api/runs/${runId}/activity`);
 }
 
 /** Stage progress for one run (poll fallback / initial fill). */

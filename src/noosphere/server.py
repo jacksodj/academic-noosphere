@@ -42,6 +42,11 @@ def _build_handlers(state: AppState) -> dict:
     from noosphere.sources.openalex import OpenAlexClient
     from noosphere.sources.ratelimit import RateLimiter
 
+    def note_activity(run_id: str, message: str) -> None:
+        # Persisted for history (run detail view) + published live over SSE.
+        row = state.sidecar.activity_put(run_id, message)
+        state.bus.publish({"type": "activity", **row})
+
     def make_service() -> SurveyService:
         openalex = OpenAlexClient(
             state.sidecar,
@@ -55,7 +60,7 @@ def _build_handlers(state: AppState) -> dict:
             websearch = WebSearchClient(state.settings.gateway_url, state.settings.aws_region)
         return SurveyService(
             state.sidecar, state.graph, openalex, default_embedder(),
-            state.settings, websearch=websearch,
+            state.settings, websearch=websearch, on_activity=note_activity,
         )
 
     def llm() -> "LlmClient":
