@@ -9,11 +9,14 @@ npm install
 VITE_MOCK=1 npm run dev        # standalone, fixture data (no core needed)
 npm run dev                    # against a running core: set VITE_API_PORT / VITE_API_TOKEN
 npm run build                  # tsc -b && vite build
+npx tauri dev                  # full Mac app: spawns the core, hot-reloads the SPA
+npx tauri build                # bundles src-tauri/target/release/bundle/macos/*.app + .dmg
 ```
 
-In the Tauri shell the core's stdout handshake (`{"port":…,"token":…}`) is passed
-to the SPA as `?port=&token=` URL params; env vars are the dev fallback
-(`src/api.ts`).
+The Tauri shell (`src-tauri/`) spawns `uv run noosphere-core`, reads the stdout
+handshake (`{"port":…,"token":…}`), and injects it as `window.__NOOSPHERE__` via
+an initialization script. `src/api.ts` resolves config in order: `?port=&token=`
+URL params → `window.__NOOSPHERE__` → `VITE_API_PORT`/`VITE_API_TOKEN` env vars.
 
 ## Notes for the integrator
 

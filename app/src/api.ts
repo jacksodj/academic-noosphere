@@ -2,10 +2,11 @@
  * Typed client for the noosphere core API (localhost FastAPI, per-launch token).
  *
  * Connection resolution order:
- *   1. URL query params `?port=<n>&token=<t>` (Tauri shell injects these from
- *      the core's stdout handshake line).
- *   2. `VITE_API_PORT` / `VITE_API_TOKEN` env vars (dev: `npm run dev` against
- *      a hand-started core).
+ *   1. URL query params `?port=<n>&token=<t>` (dev browser session against a
+ *      hand-started core).
+ *   2. `window.__NOOSPHERE__` (the Tauri shell injects the core's stdout
+ *      handshake via an initialization script — see app/src-tauri/src/lib.rs).
+ *   3. `VITE_API_PORT` / `VITE_API_TOKEN` env vars (dev fallback).
  *
  * Mock mode: `VITE_MOCK=1` makes callers in ./mock.ts serve fixture data so the
  * SPA runs standalone before the wave-2 API exists.
@@ -22,12 +23,26 @@ export interface ApiConfig {
   mock: boolean;
 }
 
+/** Handshake injected by the Tauri shell before the SPA loads. */
+declare global {
+  interface Window {
+    __NOOSPHERE__?: { port: number; token: string };
+  }
+}
+
 function resolveConfig(): ApiConfig {
   const params = new URLSearchParams(window.location.search);
+  const injected = window.__NOOSPHERE__;
   const port: string =
-    params.get("port") ?? (import.meta.env.VITE_API_PORT as string | undefined) ?? "";
+    params.get("port") ??
+    (injected ? String(injected.port) : undefined) ??
+    (import.meta.env.VITE_API_PORT as string | undefined) ??
+    "";
   const token: string =
-    params.get("token") ?? (import.meta.env.VITE_API_TOKEN as string | undefined) ?? "";
+    params.get("token") ??
+    injected?.token ??
+    (import.meta.env.VITE_API_TOKEN as string | undefined) ??
+    "";
   const mock = import.meta.env.VITE_MOCK === "1";
   return {
     baseUrl: port ? `http://127.0.0.1:${port}` : "",

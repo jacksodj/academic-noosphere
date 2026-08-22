@@ -86,12 +86,32 @@ settings).
 
 ## 4. Run
 
+### As the Mac app (Tauri shell)
+
+```bash
+cd app && npx tauri build
+open "src-tauri/target/release/bundle/macos/Academic Noosphere.app"
+```
+
+The shell spawns `uv run noosphere-core` itself (repo located via
+`NOOSPHERE_REPO`, defaulting to the checkout the shell was compiled in — the
+frozen-binary sidecar is deferred to packaging), reads the handshake off the
+core's stdout, injects it into the SPA as `window.__NOOSPHERE__`, and kills the
+core on quit. `npx tauri dev` gives the same shell with hot reload.
+
+Only one core can run at a time — the graph + DuckDB sidecar hold single-process
+file locks, so quit a hand-started core before launching the app (and note a
+`kill` can take a while if a browser tab holds the SSE stream open; the shell
+uses SIGKILL and is immune).
+
+### Core + browser (dev mode)
+
 ```bash
 uv run noosphere-core
 # → one JSON handshake line on stdout: {"port": 51234, "token": "…"}
 ```
 
-Then the UI (dev mode):
+Then the UI:
 
 ```bash
 cd app && npm run dev

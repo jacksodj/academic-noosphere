@@ -18,6 +18,10 @@ evidence). The v1 implementation now lives in this repo:
   sigma community explorer, settings. Dev: `cd app && npm install && npm run
   dev` (connect with `?port=&token=` from the handshake, or `VITE_MOCK=1` for
   fixture mode).
+- **Mac app** (`app/src-tauri/`): Tauri shell that spawns the core as a
+  sidecar, reads the handshake, and injects it into the SPA
+  (`window.__NOOSPHERE__`). `cd app && npx tauri build` produces the `.app` +
+  `.dmg`; `npx tauri dev` for hot reload.
 - **Tests**: `uv run --group dev pytest` (136 tests).
 - Optional extras: `uv sync --extra embed` (SPECTER2 local embeddings),
   `--extra websearch` (AgentCore Gateway discovery client).
