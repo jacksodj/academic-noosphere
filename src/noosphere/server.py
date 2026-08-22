@@ -251,10 +251,14 @@ def main() -> None:
     # Also drop it (0600) in the data dir so local tooling — debugging, health
     # checks, CLIs — can reach this instance without restarting it. Localhost
     # bind + per-launch token; same-user readable only.
+    # Atomic write (tmp + rename): watchers poll for this file appearing and
+    # must never observe it created-but-empty.
     hs_path = data_dir() / "handshake.json"
-    fd = os.open(hs_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    tmp_path = hs_path.with_suffix(".json.tmp")
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(handshake + "\n")
+    os.replace(tmp_path, hs_path)
     try:
         uvicorn.run(app, host="127.0.0.1", port=port, access_log=False)
     finally:
