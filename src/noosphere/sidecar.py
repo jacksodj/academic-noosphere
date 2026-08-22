@@ -63,7 +63,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at VARCHAR NOT NULL,
     updated_at VARCHAR NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
+-- No ART indexes on liveness-critical tables: a crash (SIGKILL mid-write)
+-- can corrupt an index into answering WHERE clauses with zero rows while the
+-- data is intact — observed 2026-08-22, it silently killed job recovery.
+-- These tables are small; scans are fine. The DROPs repair existing DBs.
+DROP INDEX IF EXISTS idx_jobs_status;
 
 CREATE SEQUENCE IF NOT EXISTS activities_seq;
 CREATE TABLE IF NOT EXISTS activities (
@@ -72,7 +76,7 @@ CREATE TABLE IF NOT EXISTS activities (
     ts      VARCHAR NOT NULL,
     message VARCHAR NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_activities_run ON activities (run_id);
+DROP INDEX IF EXISTS idx_activities_run;
 
 CREATE TABLE IF NOT EXISTS whitespace (
     whitespace_id VARCHAR PRIMARY KEY,
@@ -266,20 +270,32 @@ class Sidecar:
         return self._job_from_row(row) if row is not None else None
 
     def activity_put(self, run_id: str, message: str) -> dict:
-        """Append one activity line for a run; returns the stored row."""
+        """Append one activity line for a run; returns the stored row.
+
+        seq is max+1 within the table rather than a DB sequence — a crash's
+        WAL replay was observed resetting sequences, which made new rows sort
+        before old ones and froze the "latest activity" view.
+        """
         ts = _now_iso()
-        seq = self._con.execute("SELECT nextval('activities_seq')").fetchone()[0]
+        seq = self._con.execute(
+            "SELECT coalesce(max(seq), 0) + 1 FROM activities"
+        ).fetchone()[0]
         self._con.execute(
             "INSERT INTO activities VALUES (?, ?, ?, ?)", [run_id, seq, ts, message]
         )
         return {"run_id": run_id, "seq": seq, "ts": ts, "message": message}
 
     def activities_for_run(self, run_id: str, limit: int = 1000) -> list[dict]:
-        """Activity lines for a run, oldest-first (last ``limit`` entries)."""
+        """Activity lines for a run, oldest-first (last ``limit`` entries).
+
+        Ordered by (ts, seq): ts is the durable chronology (ISO strings sort
+        lexicographically); seq only tiebreaks writes within the same instant.
+        """
         rows = self._con.execute(
             "SELECT run_id, seq, ts, message FROM ("
-            "  SELECT * FROM activities WHERE run_id = ? ORDER BY seq DESC LIMIT ?"
-            ") ORDER BY seq",
+            "  SELECT * FROM activities WHERE run_id = ? "
+            "  ORDER BY ts DESC, seq DESC LIMIT ?"
+            ") ORDER BY ts, seq",
             [run_id, limit],
         ).fetchall()
         return [

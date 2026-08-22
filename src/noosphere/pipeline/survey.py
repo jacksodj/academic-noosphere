@@ -36,6 +36,8 @@ from noosphere.sources.websearch import WebSearchClient, extract_doi
 DISCOVERY_RESOLVE_PER_PAGE = 2
 SEED_SEARCH_PER_PAGE = 25
 EMBED_BATCH = 512  # abstracts per off-loop embed call (progress + ETA cadence)
+PERSIST_BATCH = 250  # work nodes per graph upsert (HNSW insert is the slow part)
+CITATION_BATCH = 2000  # citation edges per graph write (40k edges ≈ 17min total)
 
 SeedLoader = Callable[[], Awaitable[list[dict]]]
 
@@ -326,7 +328,7 @@ class SurveyService:
             embedded = await self._embed_all([embed_text(works[w]) for w in kept])
             vectors = dict(zip(kept, embedded))
         self._note(f"Persisting {len(kept)} works to graph + sidecar")
-        self._persist(run, works, kept, vectors)
+        await self._persist(run, works, kept, vectors)
         done.append("persist")
         state["done"] = done
         checkpoint.save(state)
@@ -405,7 +407,7 @@ class SurveyService:
 
     # -- graph + snapshot persistence -----------------------------------------
 
-    def _persist(
+    async def _persist(
         self,
         run: Run,
         works: dict[str, dict],
@@ -454,17 +456,63 @@ class SurveyService:
                         Citation(citing_id=wid, cited_id=rid, provenance=work.provenance)
                     )
 
+        self._note(
+            f"Persist: parsed {len(all_works)} works "
+            f"({len(authors)} authors, {len(topics)} topics, {len(citations)} citation edges)"
+        )
         self._graph.init_schema()
-        self._graph.upsert_works(all_works)
+        # Work nodes carry the embeddings — HNSW insertion makes this the slow
+        # phase (tens of minutes for a full corpus). Chunked with awaits in
+        # between so the API/SSE stay alive, plus count + ETA like the embed
+        # stage.
+        started = time.monotonic()
+        for i in range(0, len(all_works), PERSIST_BATCH):
+            self._graph.upsert_works(all_works[i : i + PERSIST_BATCH])
+            completed = min(i + PERSIST_BATCH, len(all_works))
+            elapsed = time.monotonic() - started
+            rate = completed / elapsed if elapsed > 0 else 0.0
+            eta_s = round((len(all_works) - completed) / rate) if rate > 0 else None
+            if len(all_works) > PERSIST_BATCH:
+                self._note(
+                    f"Persist: {completed}/{len(all_works)} work nodes written"
+                    + (f" (~{_fmt_duration(eta_s)} remaining)" if eta_s else "")
+                )
+                self._stage_progress(
+                    {"stage": "persist", "step": "work nodes",
+                     "done": completed, "total": len(all_works), "eta_s": eta_s}
+                )
+            await asyncio.sleep(0)  # let queued API requests run
+        self._note("Persist: work nodes written")
         self._graph.upsert_authors(list(authors.values()))
         self._graph.upsert_topics(list(topics.values()))
         self._graph.upsert_sources(list(sources.values()))
         self._graph.upsert_institutions(list(institutions.values()))
+        self._note("Persist: author/topic/source/institution nodes written")
         self._graph.add_authorships(authorships)
         self._graph.add_work_topics(work_topics)
-        self._graph.add_citations(citations)
+        # Citation edges dominate persist wall-clock (observed 17min for 40k
+        # edges) — chunked with awaits + ETA like the work nodes above.
+        started = time.monotonic()
+        for i in range(0, len(citations), CITATION_BATCH):
+            self._graph.add_citations(citations[i : i + CITATION_BATCH])
+            completed = min(i + CITATION_BATCH, len(citations))
+            elapsed = time.monotonic() - started
+            rate = completed / elapsed if elapsed > 0 else 0.0
+            eta_s = round((len(citations) - completed) / rate) if rate > 0 else None
+            if len(citations) > CITATION_BATCH:
+                self._note(
+                    f"Persist: {completed}/{len(citations)} citation edges written"
+                    + (f" (~{_fmt_duration(eta_s)} remaining)" if eta_s else "")
+                )
+                self._stage_progress(
+                    {"stage": "persist", "step": "citation edges",
+                     "done": completed, "total": len(citations), "eta_s": eta_s}
+                )
+            await asyncio.sleep(0)
+        self._note(f"Persist: {len(citations)} citation edges written")
         self._add_published_in(published_in)
         self._sidecar.add_run_works(run.run_id, kept)
+        self._note("Persist: run snapshot recorded")
 
     def _add_published_in(self, edges: list[tuple[str, str, Provenance]]) -> None:
         for work_id, source_id, prov in edges:

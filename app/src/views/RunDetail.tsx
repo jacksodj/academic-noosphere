@@ -172,7 +172,7 @@ export default function RunDetail() {
       >
         {activities.length === 0 && <p className="muted">No activity recorded yet.</p>}
         {activities.map((a) => (
-          <div key={a.seq} className="activity-line">
+          <div key={`${a.ts}-${a.seq}`} className="activity-line">
             <span className="mono muted activity-ts">{fmtTime(a.ts)}</span>
             <span>{a.message}</span>
           </div>

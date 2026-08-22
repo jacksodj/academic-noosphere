@@ -7,8 +7,10 @@ line so the spawning shell (Tauri, or a dev browser session) can connect.
 
 import asyncio
 import json
+import os
 import secrets
 import socket
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -126,11 +128,31 @@ def _build_handlers(state: AppState) -> dict:
             "expand_gap": expand_gap}
 
 
+async def _supervised_worker(state: "AppState") -> None:
+    """Run the job worker forever, restarting it if it dies.
+
+    An exception escaping the worker task would otherwise be swallowed until
+    shutdown, leaving a healthy-looking API with a permanently dead queue
+    (jobs stuck in "running", no recovery, no visible error).
+    """
+    import traceback
+
+    while True:
+        try:
+            await state.queue.worker(_build_handlers(state))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            print("job worker crashed; restarting in 5s", file=sys.stderr)
+            traceback.print_exc()
+            await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     state = AppState.build(data_dir(), Settings.load())
     app.state.noosphere = state
-    worker = asyncio.create_task(state.queue.worker(_build_handlers(state)))
+    worker = asyncio.create_task(_supervised_worker(state))
     try:
         yield
     finally:
@@ -187,9 +209,20 @@ def main() -> None:
     global _token
     _token = secrets.token_urlsafe(32)
     port = _free_port()
+    handshake = json.dumps({"port": port, "token": _token, "pid": os.getpid()})
     # Handshake line for the spawning shell; single line, JSON, stdout.
-    print(json.dumps({"port": port, "token": _token}), flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=port, access_log=False)
+    print(handshake, flush=True)
+    # Also drop it (0600) in the data dir so local tooling — debugging, health
+    # checks, CLIs — can reach this instance without restarting it. Localhost
+    # bind + per-launch token; same-user readable only.
+    hs_path = data_dir() / "handshake.json"
+    fd = os.open(hs_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(handshake + "\n")
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=port, access_log=False)
+    finally:
+        hs_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
