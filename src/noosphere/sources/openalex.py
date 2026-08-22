@@ -33,6 +33,7 @@ CITING_CAP = 500
 CITING_PER_PAGE = 200
 RETRY_BACKOFF_S = 1.0
 REQUEST_DEADLINE_S = 90.0  # hard wall-clock cap per request (stall detection)
+MAX_RETRY_AFTER_S = 30.0  # never honor a server Retry-After beyond this
 
 
 class ResponseCache(Protocol):
@@ -156,8 +157,17 @@ class OpenAlexClient:
                 backoff = float(retry_after) if retry_after else RETRY_BACKOFF_S
             except ValueError:
                 backoff = RETRY_BACKOFF_S
-            await asyncio.sleep(backoff)
+            # A rate-jailed anonymous client can be told to wait hours; a run
+            # sleeping that long is indistinguishable from a hang. Cap it and
+            # fail loudly if the server still says no.
+            await asyncio.sleep(min(backoff, MAX_RETRY_AFTER_S))
             resp = await self._fetch(url)
+            if resp.status_code == 429:
+                raise RuntimeError(
+                    f"OpenAlex rate-limited twice (Retry-After {retry_after!r}) "
+                    f"for {clean_url} — add an OpenAlex API key and contact email "
+                    "in Settings; anonymous traffic is throttled hard"
+                )
         if resp.status_code == 404:
             return None
         resp.raise_for_status()

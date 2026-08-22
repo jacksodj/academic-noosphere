@@ -368,3 +368,40 @@ async def test_deadline_retry_recovers_from_one_stall(
         results = await client.works_search("agent memory")
     assert calls["n"] == 2
     assert len(results) == 1
+
+
+async def test_huge_retry_after_is_capped_and_double_429_fails_loudly(
+    respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retry-After: 86400 must not put the survey to sleep for a day."""
+    import noosphere.sources.openalex as oa
+
+    monkeypatch.setattr(oa, "MAX_RETRY_AFTER_S", 0.02)
+    respx_mock.get(host="api.openalex.org", path="/works").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "86400"})
+    )
+    async with make_client() as client:
+        start = time.monotonic()
+        with pytest.raises(RuntimeError, match="rate-limited twice.*86400"):
+            await client.works_search("agent memory")
+    assert time.monotonic() - start < 5.0
+
+
+async def test_single_429_then_success_recovers(
+    respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import noosphere.sources.openalex as oa
+
+    monkeypatch.setattr(oa, "MAX_RETRY_AFTER_S", 0.02)
+    calls = {"n": 0}
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "7200"})
+        return httpx.Response(200, json={"meta": {}, "results": [RAW_WORK]})
+
+    respx_mock.get(host="api.openalex.org", path="/works").mock(side_effect=flaky)
+    async with make_client() as client:
+        results = await client.works_search("agent memory")
+    assert calls["n"] == 2 and len(results) == 1
