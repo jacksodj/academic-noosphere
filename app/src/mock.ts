@@ -9,6 +9,7 @@
 
 import type {
   GapReport,
+  CredentialStatus,
   IdeonomyExpansion,
   Run,
   Settings,
@@ -64,6 +65,7 @@ export const mockRuns: Run[] = [
 ];
 
 export const mockSettings: Settings = {
+  onboarded: true,
   aws_region: "us-east-1",
   gateway_url: "https://example-gateway.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
   web_search_enabled: true,
@@ -484,6 +486,38 @@ export const mockExpansions: Record<string, IdeonomyExpansion[]> = {
     },
   ],
 };
+
+/** GET /api/credentials fixture — mutated by mock set/clear in endpoints.ts. */
+export const mockCredentials: CredentialStatus[] = [
+  {
+    name: "openalex_api_key",
+    env_var: "NOOSPHERE_OPENALEX_KEY",
+    set: true,
+    source: "keychain",
+    hint: "…7f2a",
+  },
+  {
+    name: "s2_api_key",
+    env_var: "NOOSPHERE_S2_KEY",
+    set: false,
+    source: null,
+    hint: null,
+  },
+  {
+    name: "ncbi_api_key",
+    env_var: "NOOSPHERE_NCBI_KEY",
+    set: false,
+    source: null,
+    hint: null,
+  },
+  {
+    name: "crossref_mailto",
+    env_var: "NOOSPHERE_CROSSREF_MAILTO",
+    set: true,
+    source: "env",
+    hint: "you@example.com",
+  },
+];
 
 /** GET /api/spend fixture — mutated by the mock SSE ticker in endpoints.ts. */
 export const mockSpend: SpendSummary = {

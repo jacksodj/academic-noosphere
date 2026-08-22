@@ -104,6 +104,7 @@ export interface IdeonomyExpansion {
 
 /** Mirror of noosphere.config.Settings, as served by /api/settings. */
 export interface Settings {
+  onboarded: boolean;
   aws_region: string;
   gateway_url: string | null;
   web_search_enabled: boolean;
@@ -112,6 +113,27 @@ export interface Settings {
   coarse_corpus_target: number;
   relevance_threshold: number;
   ranking_weights: Record<string, number>;
+}
+
+/**
+ * GET /api/credentials item — presence/source of one Keychain credential.
+ * Values are write-only; `hint` is masked to the last 4 chars for secrets.
+ */
+export interface CredentialStatus {
+  name: string;
+  env_var: string;
+  set: boolean;
+  source: "env" | "keychain" | null;
+  hint: string | null;
+}
+
+/** POST /api/aws/check result — STS identity probe. */
+export interface AwsCheckResult {
+  ok: boolean;
+  profile: string | null;
+  account?: string;
+  arn?: string;
+  error?: string;
 }
 
 /** POST /api/surveys request body (endpoint lands in wave 2). */

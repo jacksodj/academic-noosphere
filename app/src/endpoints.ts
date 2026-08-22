@@ -5,8 +5,9 @@
  * endpoint the wave-2 API exposes).
  */
 
-import { apiConfig, get, getText, post, put, subscribe } from "./api";
+import { apiConfig, del, get, getText, post, put, subscribe } from "./api";
 import {
+  mockCredentials,
   mockDelay,
   mockExpansions,
   mockReportMarkdown,
@@ -17,6 +18,8 @@ import {
   mockWhitespace,
 } from "./mock";
 import type {
+  AwsCheckResult,
+  CredentialStatus,
   Gap,
   GapReport,
   IdeonomyExpansion,
@@ -50,6 +53,45 @@ export function createSurvey(req: NewSurveyRequest): Promise<Run> {
     return mockDelay(run);
   }
   return post<Run>("/api/surveys", req);
+}
+
+// -- credentials (Keychain-backed; values are write-only) --------------------
+
+export function listCredentials(): Promise<CredentialStatus[]> {
+  if (apiConfig.mock) return mockDelay(mockCredentials.map((c) => ({ ...c })));
+  return get<CredentialStatus[]>("/api/credentials");
+}
+
+function mockSetCredential(name: string, set: boolean, hint: string | null): CredentialStatus {
+  const cred = mockCredentials.find((c) => c.name === name);
+  if (!cred) throw new Error(`unknown credential ${name}`);
+  Object.assign(cred, { set, source: set ? "keychain" : null, hint });
+  return { ...cred };
+}
+
+export function setCredential(name: string, value: string): Promise<CredentialStatus> {
+  if (apiConfig.mock) {
+    const hint = name === "crossref_mailto" ? value : `…${value.slice(-4)}`;
+    return mockDelay(mockSetCredential(name, true, hint));
+  }
+  return put<CredentialStatus>(`/api/credentials/${name}`, { value });
+}
+
+export function clearCredential(name: string): Promise<CredentialStatus> {
+  if (apiConfig.mock) return mockDelay(mockSetCredential(name, false, null));
+  return del<CredentialStatus>(`/api/credentials/${name}`);
+}
+
+export function checkAws(): Promise<AwsCheckResult> {
+  if (apiConfig.mock) {
+    return mockDelay({
+      ok: true,
+      profile: "research",
+      account: "123456789012",
+      arn: "arn:aws:sts::123456789012:assumed-role/research/you",
+    });
+  }
+  return post<AwsCheckResult>("/api/aws/check", {});
 }
 
 export function getSettings(): Promise<Settings> {

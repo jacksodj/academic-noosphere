@@ -23,6 +23,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
+from noosphere import config
 from noosphere.api.state import AppState, settings_to_dict
 from noosphere.models import (
     Gap,
@@ -101,6 +102,77 @@ async def put_settings(
     request: Request, body: dict[str, Any] = Body(...)
 ) -> dict[str, Any]:
     return settings_to_dict(_state(request).update_settings(body))
+
+
+# -- credentials (Keychain-backed; values are write-only) --------------------
+
+
+class CredentialValue(BaseModel):
+    value: str
+
+
+@router.get("/credentials")
+async def list_credentials() -> list[dict[str, Any]]:
+    """Presence/source/hint for each known credential — never the values."""
+    return config.credentials_status()
+
+
+@router.put("/credentials/{name}")
+async def put_credential(name: str, body: CredentialValue) -> dict[str, Any]:
+    if name not in config.CRED_KEYS:
+        raise HTTPException(404, f"unknown credential {name!r}")
+    value = body.value.strip()
+    if not value:
+        raise HTTPException(422, "value must be non-empty")
+    try:
+        config.set_credential(name, value)
+    except Exception as exc:  # Keychain locked / no backend
+        raise HTTPException(500, f"could not write to Keychain: {exc}") from exc
+    return config.credential_status(name)
+
+
+@router.delete("/credentials/{name}")
+async def remove_credential(name: str) -> dict[str, Any]:
+    if name not in config.CRED_KEYS:
+        raise HTTPException(404, f"unknown credential {name!r}")
+    try:
+        config.delete_credential(name)
+    except Exception as exc:
+        raise HTTPException(500, f"could not delete from Keychain: {exc}") from exc
+    return config.credential_status(name)
+
+
+@router.post("/aws/check")
+async def aws_check(request: Request) -> dict[str, Any]:
+    """STS identity check so onboarding/settings can confirm AWS access.
+
+    Runs in a thread (boto3 is blocking); short timeouts so a missing network
+    answers in seconds, not minutes.
+    """
+    import os
+
+    region = _state(request).settings.aws_region
+
+    def _check() -> dict[str, Any]:
+        import boto3
+        from botocore.config import Config as BotoConfig
+
+        sts = boto3.client(
+            "sts",
+            region_name=region,
+            config=BotoConfig(
+                connect_timeout=5, read_timeout=10, retries={"max_attempts": 1}
+            ),
+        )
+        ident = sts.get_caller_identity()
+        return {"account": ident["Account"], "arn": ident["Arn"]}
+
+    profile = os.environ.get("AWS_PROFILE")
+    try:
+        ident = await asyncio.to_thread(_check)
+    except Exception as exc:
+        return {"ok": False, "profile": profile, "error": str(exc)}
+    return {"ok": True, "profile": profile, **ident}
 
 
 # -- whitespace & zoom -------------------------------------------------------

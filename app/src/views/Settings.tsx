@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiConfig } from "../api";
+import { AwsCheck, CredentialsPanel } from "../credentials";
 import { getSettings, saveSettings } from "../endpoints";
 import type { Settings as SettingsModel } from "../types";
 
@@ -102,6 +103,25 @@ export default function Settings() {
           </div>
         </form>
       )}
+
+      <div className="card form">
+        <h2>API credentials</h2>
+        <p className="muted">
+          Stored in the macOS Keychain (service <code>academic-noosphere</code>) — never in
+          files or this repo. The core reads them at survey time.
+        </p>
+        <CredentialsPanel />
+      </div>
+
+      <div className="card form">
+        <h2>AWS</h2>
+        <p className="muted">
+          Bedrock synthesis and Web Search use your ambient AWS identity (SSO profile via{" "}
+          <code>AWS_PROFILE</code>) — nothing AWS-shaped is stored by the app. Session
+          expired? Run <code>aws sso login --profile &lt;profile&gt;</code> and relaunch.
+        </p>
+        <AwsCheck />
+      </div>
     </section>
   );
 }

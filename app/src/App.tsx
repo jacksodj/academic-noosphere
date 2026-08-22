@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { apiConfig } from "./api";
-import { subscribeSpend } from "./endpoints";
-import type { SpendSummary } from "./types";
+import { getSettings, subscribeSpend } from "./endpoints";
+import type { Settings as SettingsModel, SpendSummary } from "./types";
 import Dashboard from "./views/Dashboard";
 import Explorer from "./views/Explorer";
+import Onboarding from "./views/Onboarding";
 import Report from "./views/Report";
 import Settings from "./views/Settings";
 import Triage from "./views/Triage";
@@ -35,6 +36,25 @@ function SpendMeter() {
 }
 
 export default function App() {
+  // First-start gate: until settings load we render the normal shell (views
+  // handle their own errors when no core is configured); once loaded, an
+  // un-onboarded install sees the wizard instead of the app.
+  const [settings, setSettings] = useState<SettingsModel | null>(null);
+  const [settingsFailed, setSettingsFailed] = useState(false);
+
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch(() => setSettingsFailed(true));
+  }, []);
+
+  if (!settingsFailed && settings === null) {
+    return null; // brief; avoids flashing the app before the gate decides
+  }
+  if (settings && !settings.onboarded) {
+    return <Onboarding settings={settings} onDone={setSettings} />;
+  }
+
   return (
     <div className="shell">
       <header className="topbar">

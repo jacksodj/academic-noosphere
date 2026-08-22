@@ -19,6 +19,10 @@ CRED_KEYS = {
     "crossref_mailto": "NOOSPHERE_CROSSREF_MAILTO",
 }
 
+# Names whose values are secrets (status hints are masked to the last 4 chars).
+# crossref_mailto is just an email for the polite pool — shown in full.
+CRED_SECRET = frozenset({"openalex_api_key", "s2_api_key", "ncbi_api_key"})
+
 
 def get_credential(name: str) -> str | None:
     """Env override first (dev), then Keychain. Returns None if absent."""
@@ -30,6 +34,63 @@ def get_credential(name: str) -> str | None:
         return keyring.get_password(KEYCHAIN_SERVICE, name)
     except Exception:
         return None
+
+
+def set_credential(name: str, value: str) -> None:
+    """Store a credential in the Keychain. Raises KeyError for unknown names;
+    Keychain backend errors propagate (the API layer turns them into 500s)."""
+    if name not in CRED_KEYS:
+        raise KeyError(name)
+    import keyring
+
+    keyring.set_password(KEYCHAIN_SERVICE, name, value)
+
+
+def delete_credential(name: str) -> None:
+    """Remove a credential from the Keychain (no-op if absent). Env overrides
+    are not touched — they belong to the launching shell, not to us."""
+    if name not in CRED_KEYS:
+        raise KeyError(name)
+    import keyring
+
+    try:
+        keyring.delete_password(KEYCHAIN_SERVICE, name)
+    except keyring.errors.PasswordDeleteError:
+        pass
+
+
+def credential_status(name: str) -> dict:
+    """Presence/source of one credential — never the value itself.
+
+    ``hint`` is the last 4 chars for secrets (enough to recognize which key),
+    the full value for non-secrets (crossref_mailto is just an email).
+    """
+    env = CRED_KEYS[name]
+    env_value = os.environ.get(env)
+    keychain_value = None
+    if not env_value:
+        try:
+            import keyring
+
+            keychain_value = keyring.get_password(KEYCHAIN_SERVICE, name)
+        except Exception:
+            keychain_value = None
+    value = env_value or keychain_value
+    hint = None
+    if value:
+        hint = value if name not in CRED_SECRET else f"…{value[-4:]}"
+    return {
+        "name": name,
+        "env_var": env,
+        "set": bool(value),
+        "source": "env" if env_value else ("keychain" if keychain_value else None),
+        "hint": hint,
+    }
+
+
+def credentials_status() -> list[dict]:
+    """Status for every known credential, in CRED_KEYS order."""
+    return [credential_status(name) for name in CRED_KEYS]
 
 
 def data_dir() -> Path:
@@ -44,6 +105,7 @@ def data_dir() -> Path:
 
 @dataclass
 class Settings:
+    onboarded: bool = False  # first-start wizard completed/skipped
     aws_region: str = "us-east-1"
     gateway_url: str | None = None  # AgentCore Gateway MCP endpoint
     web_search_enabled: bool = True  # spike verdict HEALTHY -> narrative booster ON

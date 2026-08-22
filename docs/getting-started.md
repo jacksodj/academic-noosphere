@@ -36,6 +36,11 @@ Notes:
 
 ### 3.1 Scholarly API credentials (BYO — never stored in the repo)
 
+**Easiest path: let the app do this.** On first start the app shows an
+onboarding wizard that captures these (with links to where each key comes
+from) straight into the Keychain; after that, Settings → API credentials
+manages them. The rest of this section is the manual/headless alternative.
+
 Credentials are read from the macOS Keychain (service `academic-noosphere`),
 with environment variables as the dev override. Names:
 

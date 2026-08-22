@@ -724,3 +724,147 @@ p.badge {
   margin-bottom: 0.5rem;
   font-size: 0.88rem;
 }
+
+/* -- credentials (Settings + onboarding) ------------------------------------ */
+
+button.subtle {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.cred-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.cred-row {
+  border-top: 1px solid var(--border);
+  padding-top: 0.8rem;
+}
+
+.cred-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.cred-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.cred-label {
+  font-weight: 600;
+}
+
+.cred-required {
+  color: var(--accent);
+}
+
+.cred-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.cred-set {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.cred-env {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.cred-unset {
+  color: var(--text-muted);
+}
+
+.cred-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.cred-howto {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.cred-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cred-controls input {
+  flex: 1;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.45rem 0.6rem;
+}
+
+.cred-env-note {
+  font-size: 0.85rem;
+}
+
+.aws-check {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+/* -- onboarding wizard ------------------------------------------------------ */
+
+.onboarding {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4rem 1.5rem;
+  background: var(--bg);
+}
+
+.onboarding-card {
+  max-width: 38rem;
+  width: 100%;
+}
+
+.onboarding-steps {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.onboarding-step {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.onboarding-step.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.onboarding-shell {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+.onboarding-actions {
+  margin-top: 0.5rem;
+}

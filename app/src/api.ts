@@ -63,7 +63,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
   if (!apiConfig.baseUrl) {
     throw new ApiError(
       0,
@@ -103,6 +107,10 @@ export function post<T>(path: string, body: unknown): Promise<T> {
 
 export function put<T>(path: string, body: unknown): Promise<T> {
   return request<T>("PUT", path, body);
+}
+
+export function del<T>(path: string): Promise<T> {
+  return request<T>("DELETE", path);
 }
 
 /** GET a text/plain or text/markdown endpoint (e.g. /api/runs/{id}/report.md). */
