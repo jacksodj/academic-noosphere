@@ -1028,3 +1028,8 @@ a.plain-link:hover {
   flex-direction: column;
   gap: 0.6rem;
 }
+
+.boot-wait {
+  text-align: center;
+  padding-top: 6rem;
+}

@@ -70,9 +70,25 @@ fn spawn_core() -> (Child, Handshake) {
     (child, handshake)
 }
 
+fn wait_for_api(port: u16) {
+    // The handshake line prints before uvicorn binds the socket, and startup
+    // (DB open + WAL replay) can take seconds on a large corpus. Creating the
+    // window earlier hands the SPA a connection-refused API and broken views.
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    while std::time::Instant::now() < deadline {
+        if std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    panic!("core API on port {port} never started listening");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (child, handshake) = spawn_core();
+    wait_for_api(handshake.port);
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

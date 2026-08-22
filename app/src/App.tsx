@@ -45,13 +45,28 @@ export default function App() {
   const [settingsFailed, setSettingsFailed] = useState(false);
 
   useEffect(() => {
-    getSettings()
-      .then(setSettings)
-      .catch(() => setSettingsFailed(true));
+    // The core may still be binding its port right at app launch — retry the
+    // boot fetch briefly instead of declaring the gate failed on attempt one.
+    let cancelled = false;
+    const attempt = (n: number) => {
+      getSettings()
+        .then((s) => {
+          if (!cancelled) setSettings(s);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (n < 10) setTimeout(() => attempt(n + 1), 1000);
+          else setSettingsFailed(true);
+        });
+    };
+    attempt(0);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!settingsFailed && settings === null) {
-    return null; // brief; avoids flashing the app before the gate decides
+    return <p className="muted boot-wait">Starting the noosphere core…</p>;
   }
   if (settings && !settings.onboarded) {
     return <Onboarding settings={settings} onDone={setSettings} />;

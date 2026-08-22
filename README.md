@@ -22,6 +22,9 @@ evidence). The v1 implementation now lives in this repo:
   sidecar, reads the handshake, and injects it into the SPA
   (`window.__NOOSPHERE__`). `cd app && npx tauri build` produces the `.app` +
   `.dmg`; `npx tauri dev` for hot reload.
+- **Example output**: a real exported Gap Report (grounded gap + two Ideonomy
+  Expansion attempts) from the first end-to-end run lives at
+  [`docs/examples/gap-report-example.md`](docs/examples/gap-report-example.md).
 - **Tests**: `uv run --group dev pytest` (136 tests).
 - Optional extras: `uv sync --extra embed` (SPECTER2 local embeddings),
   `--extra websearch` (AgentCore Gateway discovery client).
