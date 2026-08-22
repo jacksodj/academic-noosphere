@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { EvidenceChip, ScoreBar } from "../components";
 import { getReport, getWhitespace, listRuns, zoomWhitespace } from "../endpoints";
 import type { Run, WhitespaceCandidate, WorkRef } from "../types";
+import { candidateStat, parseCandidate, surpriseScore } from "../whitespace";
 
 const KIND_LABEL: Record<WhitespaceCandidate["kind"], string> = {
   bridge: "bridge",
@@ -131,73 +132,72 @@ export default function Triage() {
       )}
 
       {candidates !== null && candidates.length > 0 && (
-        <div className="table-wrap">
-          <table className="triage-table">
-            <thead>
-              <tr>
-                <th>Candidate</th>
-                <th>Kind</th>
-                <th>Description</th>
-                <th>Signals</th>
-                <th>Evidence</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {candidates.map((c) => (
-                <tr key={c.whitespace_id} className={`ws-row ws-${c.status}`}>
-                  <td className="mono">{c.whitespace_id}</td>
-                  <td>
-                    <span className={`badge kind-${c.kind}`}>{KIND_LABEL[c.kind]}</span>
-                    {c.kind === "bridge" && c.community_a !== null && c.community_b !== null && (
-                      <div className="muted mono small">
-                        C{c.community_a} ↔ C{c.community_b}
+        <>
+          <p className="muted">
+            {candidates.length} candidates, most surprising first (largest gap between expected
+            and observed works).
+          </p>
+          <div className="ws-cards">
+            {[...candidates]
+              .sort((a, b) => surpriseScore(b) - surpriseScore(a))
+              .map((c) => {
+                const p = parseCandidate(c);
+                const stat = candidateStat(p);
+                return (
+                  <div key={c.whitespace_id} className={`card ws-card ws-${c.status}`}>
+                    <div className="ws-card-head">
+                      <div className="ws-card-title">
+                        <h2 title={c.description}>{p.title}</h2>
+                        <span className="muted small">
+                          <span className={`badge kind-${c.kind}`}>{KIND_LABEL[c.kind]}</span>{" "}
+                          {p.community && `community ${p.community} · `}
+                          {c.topic_id && (
+                            <span className="mono">{c.topic_id} · </span>
+                          )}
+                          <span className="mono">{p.shortId}</span>
+                        </span>
+                      </div>
+                      <div className="ws-card-actions">
+                        <span className={`badge ws-status-${c.status}`}>
+                          {c.status.replace("_", " ")}
+                        </span>
+                        {c.status === "candidate" && (
+                          <button
+                            className="primary"
+                            disabled={zooming.has(c.whitespace_id)}
+                            onClick={() => void startZoom(c)}
+                          >
+                            {zooming.has(c.whitespace_id) ? "Starting…" : "Zoom"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="ws-card-body">
+                      {stat ? (
+                        <span className="ws-stat">{stat}</span>
+                      ) : (
+                        <span className="ws-stat-desc">{c.description}</span>
+                      )}
+                      <div className="signals-cell">
+                        <ScoreBar label="sparsity" value={c.sparsity_score} />
+                        <ScoreBar label="low-cited" value={c.low_citedness_signal} />
+                      </div>
+                    </div>
+                    {c.evidence.length > 0 && (
+                      <div className="chip-row">
+                        {c.evidence.map((item, i) => (
+                          <EvidenceChip key={i} item={item} works={works} />
+                        ))}
                       </div>
                     )}
-                    {c.kind === "thin_cell" && c.topic_id && (
-                      <div className="muted mono small">{c.topic_id}</div>
-                    )}
-                  </td>
-                  <td className="wrap-cell">
-                    {c.description}
                     {c.status === "not_confirmed" && c.not_confirmed_reason && (
                       <div className="not-confirmed-reason">{c.not_confirmed_reason}</div>
                     )}
-                  </td>
-                  <td className="signals-cell">
-                    <ScoreBar label="sparsity" value={c.sparsity_score} />
-                    <ScoreBar label="low-cited" value={c.low_citedness_signal} />
-                  </td>
-                  <td className="wrap-cell">
-                    <div className="chip-row">
-                      {c.evidence.length === 0 && <span className="muted">—</span>}
-                      {c.evidence.map((item, i) => (
-                        <EvidenceChip key={i} item={item} works={works} />
-                      ))}
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`badge ws-status-${c.status}`}>
-                      {c.status.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td>
-                    {c.status === "candidate" && (
-                      <button
-                        className="primary"
-                        disabled={zooming.has(c.whitespace_id)}
-                        onClick={() => void startZoom(c)}
-                      >
-                        {zooming.has(c.whitespace_id) ? "Starting…" : "Zoom"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                );
+              })}
+          </div>
+        </>
       )}
     </section>
   );

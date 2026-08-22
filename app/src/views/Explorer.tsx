@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import Sigma from "sigma";
 import { getReport, getWhitespace, listRuns } from "../endpoints";
 import type { GapReport, ReportCommunity, Run, WhitespaceCandidate } from "../types";
+import { candidateStat, parseCandidate } from "../whitespace";
 
 interface ThemeColors {
   text: string;
@@ -142,6 +143,17 @@ export default function Explorer() {
     // thin connector edges (dashed-equivalent); thin cells on an outer ring.
     let thinIdx = 0;
     const thinCells = candidates.filter((c) => c.kind === "thin_cell");
+    const wsLabel = (c: WhitespaceCandidate): string => {
+      const parsed = parseCandidate(c);
+      const title =
+        parsed.title.length > 32 ? `${parsed.title.slice(0, 32)}…` : parsed.title;
+      return c.status === "candidate" ? title : `${title} (${c.status.replace("_", " ")})`;
+    };
+    // Node size scales with how surprising the hole is (expected works).
+    const wsSize = (c: WhitespaceCandidate): number => {
+      const expected = parseCandidate(c).expected;
+      return expected ? Math.min(14, 4 + Math.sqrt(expected)) : 5;
+    };
     for (const c of candidates) {
       const wsColor = c.status === "confirmed" ? theme.warn : theme.muted;
       if (c.kind === "bridge" && c.community_a !== null && c.community_b !== null) {
@@ -153,8 +165,8 @@ export default function Explorer() {
         graph.addNode(c.whitespace_id, {
           x: mx * 1.15,
           y: my * 1.15,
-          size: 5,
-          label: `⚠ ${c.whitespace_id} (${c.status})`,
+          size: wsSize(c),
+          label: wsLabel(c),
           color: wsColor,
           kind: "whitespace",
         });
@@ -166,8 +178,8 @@ export default function Explorer() {
         graph.addNode(c.whitespace_id, {
           x: 1.45 * R * Math.cos(angle),
           y: 1.45 * R * Math.sin(angle),
-          size: 5,
-          label: `⚠ ${c.whitespace_id} (${c.status})`,
+          size: wsSize(c),
+          label: wsLabel(c),
           color: wsColor,
           kind: "whitespace",
         });
@@ -321,13 +333,17 @@ export default function Explorer() {
             )}
             {selection?.type === "whitespace" && (
               <>
-                <h2 className="mono">{selection.candidate.whitespace_id}</h2>
+                <h2>{parseCandidate(selection.candidate).title}</h2>
                 <p className="muted small">
                   {selection.candidate.kind} · {selection.candidate.status.replace("_", " ")} ·
                   sparsity {selection.candidate.sparsity_score.toFixed(2)} · low-cited{" "}
-                  {selection.candidate.low_citedness_signal.toFixed(2)}
+                  {selection.candidate.low_citedness_signal.toFixed(2)} ·{" "}
+                  <span className="mono">{parseCandidate(selection.candidate).shortId}</span>
                 </p>
-                <p>{selection.candidate.description}</p>
+                {candidateStat(parseCandidate(selection.candidate)) && (
+                  <p className="ws-stat">{candidateStat(parseCandidate(selection.candidate))}</p>
+                )}
+                <p className="muted small">{selection.candidate.description}</p>
                 {selection.candidate.not_confirmed_reason && (
                   <p className="not-confirmed-reason">
                     {selection.candidate.not_confirmed_reason}

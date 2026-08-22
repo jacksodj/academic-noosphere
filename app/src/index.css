@@ -963,3 +963,60 @@ a.plain-link:hover {
 .stage-eta {
   margin: 0 0 0.5rem;
 }
+
+/* -- whitespace triage cards ------------------------------------------------ */
+
+.ws-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ws-card h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.ws-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.ws-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.ws-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.ws-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin: 0.6rem 0 0.4rem;
+  flex-wrap: wrap;
+}
+
+.ws-stat {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.ws-stat-desc {
+  max-width: 34rem;
+}
+
+.ws-card .signals-cell {
+  min-width: 16rem;
+}

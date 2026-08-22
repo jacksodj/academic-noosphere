@@ -4,8 +4,8 @@
     {
       "name": "spa-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "app"],
-      "port": 5173
+      "runtimeArgs": ["run", "dev", "--prefix", "app", "--", "--port", "5175", "--strictPort"],
+      "port": 5175
     }
   ]
 }
