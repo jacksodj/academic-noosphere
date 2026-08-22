@@ -19,7 +19,14 @@ dependencies = [
 [project.optional-dependencies]
 # Heavy/optional at runtime:
 embed = ["sentence-transformers>=3.0"]        # SPECTER2 local embedding (~440MB model)
-websearch = ["mcp>=1.0", "mcp-proxy-for-aws>=1.0"]  # Gateway MCP client (SigV4)
+# mcp<2 + pydantic-settings: fastmcp 2.14.0 (pulled in by mcp-proxy-for-aws)
+# breaks on the mcp 2.0 SDK (McpError moved) and imports pydantic_settings
+# without declaring it; both constraints keep the import working at runtime.
+websearch = [
+    "mcp>=1.0,<2",
+    "mcp-proxy-for-aws>=1.0",
+    "pydantic-settings>=2",
+]  # Gateway MCP client (SigV4)
 
 [dependency-groups]
 dev = [

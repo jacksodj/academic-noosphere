@@ -118,7 +118,7 @@ class WebSearchClient:
             raise RuntimeError(
                 "Web Search discovery requires the optional `websearch` extra "
                 "(mcp + mcp-proxy-for-aws); install it with "
-                "`uv sync --extra websearch`"
+                f"`uv sync --extra websearch` (import failed: {exc})"
             ) from exc
         return ClientSession, aws_iam_streamablehttp_client
 

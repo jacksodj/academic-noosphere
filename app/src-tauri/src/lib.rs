@@ -75,6 +75,7 @@ pub fn run() {
     let (child, handshake) = spawn_core();
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(CoreProcess(Mutex::new(Some(child))))
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -84,10 +85,23 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            // Besides the handshake, route external links to the system
+            // browser — WKWebView silently drops target=_blank otherwise.
             let inject = format!(
-                "window.__NOOSPHERE__ = {{ port: {}, token: {} }};",
-                handshake.port,
-                serde_json::to_string(&handshake.token).unwrap(),
+                concat!(
+                    "window.__NOOSPHERE__ = {{ port: {port}, token: {token} }};\n",
+                    "document.addEventListener('click', (e) => {{\n",
+                    "  const a = e.target.closest && e.target.closest('a[href]');\n",
+                    "  if (!a) return;\n",
+                    "  const url = a.href;\n",
+                    "  if (/^https?:/.test(url) && new URL(url).origin !== location.origin) {{\n",
+                    "    e.preventDefault();\n",
+                    "    window.__TAURI_INTERNALS__.invoke('plugin:opener|open_url', {{ url }});\n",
+                    "  }}\n",
+                    "}}, true);"
+                ),
+                port = handshake.port,
+                token = serde_json::to_string(&handshake.token).unwrap(),
             );
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Academic Noosphere")
