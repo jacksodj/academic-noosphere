@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { apiConfig } from "./api";
+import { ViewErrorBoundary } from "./components";
 import { getSettings, subscribeSpend } from "./endpoints";
 import type { Settings as SettingsModel, SpendSummary } from "./types";
 import Dashboard from "./views/Dashboard";
@@ -73,14 +74,16 @@ export default function App() {
         </div>
       </header>
       <main>
-        <Routes>
+        <ViewErrorBoundary>
+          <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/runs/:runId" element={<RunDetail />} />
           <Route path="/triage" element={<Triage />} />
           <Route path="/report" element={<Report />} />
           <Route path="/explorer" element={<Explorer />} />
           <Route path="/settings" element={<Settings />} />
-        </Routes>
+          </Routes>
+        </ViewErrorBoundary>
       </main>
     </div>
   );

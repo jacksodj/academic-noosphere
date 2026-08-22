@@ -313,7 +313,7 @@ async def expand_gap(request: Request, gap_id: str) -> dict[str, str]:
             "job_id": job_id,
         }
     )
-    return {"job_id": job_id}
+    return {"job_id": job_id, "gap_id": gap_id, "attempt": str(attempt)}
 
 
 # -- reports -----------------------------------------------------------------

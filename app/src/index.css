@@ -1020,3 +1020,11 @@ a.plain-link:hover {
 .ws-card .signals-cell {
   min-width: 16rem;
 }
+
+.view-error {
+  margin: 2rem auto;
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}

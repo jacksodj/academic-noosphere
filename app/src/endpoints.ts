@@ -262,39 +262,50 @@ export function getExpansions(gapId: string): Promise<IdeonomyExpansion[]> {
   return get<IdeonomyExpansion[]>(`/api/gaps/${encodeURIComponent(gapId)}/expansions`);
 }
 
-/** Generate a new Ideonomy Expansion (Opus; attempt N+1 = Re-roll). */
-export function expandGap(gapId: string): Promise<IdeonomyExpansion> {
+/**
+ * Queue a new Ideonomy Expansion (Opus; attempt N+1 = Re-roll).
+ *
+ * The expansion is generated ASYNCHRONOUSLY by the job queue — the 202
+ * response is only an acknowledgment. Listen for the "expansion_ready" /
+ * "expansion_failed" SSE events (or re-poll getExpansions) for the result.
+ */
+export function expandGap(gapId: string): Promise<{ gap_id: string; attempt: number }> {
   if (apiConfig.mock) {
     const existing = mockExpansions[gapId] ?? (mockExpansions[gapId] = []);
     const attempt = existing.length + 1;
-    const expansion: IdeonomyExpansion = {
-      gap_id: gapId,
-      attempt,
-      tuple: {
-        operators: ["analogy", "extremization"],
-        organon: "organon of relations",
-        dimension_prompts: ["scale", "actors"],
-        seed: `mock:${gapId}:${attempt}`,
-      },
-      ideas: [
-        {
-          text: `Mock idea (attempt ${attempt}): push the gap's mechanism to an extreme regime and study where it breaks.`,
-          operators: ["extremization"],
-          organon_position: "limit analysis",
-          nearest_work_id: "W4322109876",
+    // Simulate the async queue: the expansion "arrives" a few seconds later.
+    setTimeout(() => {
+      existing.push({
+        gap_id: gapId,
+        attempt,
+        tuple: {
+          operators: ["analogy", "extremization"],
+          organon: "organon of relations",
+          dimension_prompts: ["scale", "actors"],
+          seed: `mock:${gapId}:${attempt}`,
         },
-        {
-          text: `Mock idea (attempt ${attempt}): find the closest analogous mechanism in a neighboring community and port its formalism.`,
-          operators: ["analogy"],
-          organon_position: "relational mapping",
-          nearest_work_id: "W4402998811",
-        },
-      ],
-    };
-    existing.push(expansion);
-    return mockDelay(expansion, 900);
+        ideas: [
+          {
+            text: `Mock idea (attempt ${attempt}): push the gap's mechanism to an extreme regime and study where it breaks.`,
+            operators: ["extremization"],
+            organon_position: "limit analysis",
+            nearest_work_id: "W4322109876",
+          },
+          {
+            text: `Mock idea (attempt ${attempt}): find the closest analogous mechanism in a neighboring community and port its formalism.`,
+            operators: ["analogy"],
+            organon_position: "relational mapping",
+            nearest_work_id: "W4402998811",
+          },
+        ],
+      });
+    }, 4000);
+    return mockDelay({ gap_id: gapId, attempt }, 300);
   }
-  return post<IdeonomyExpansion>(`/api/gaps/${encodeURIComponent(gapId)}/expand`, {});
+  return post<{ gap_id: string; attempt: number }>(
+    `/api/gaps/${encodeURIComponent(gapId)}/expand`,
+    {},
+  );
 }
 
 /** Full interactive Gap Report JSON for a completed zoom run. */

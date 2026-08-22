@@ -140,10 +140,22 @@ def _build_handlers(state: AppState) -> dict:
         if not gaps:
             raise ValueError(f"unknown gap {payload['gap_id']}")
         gap = gaps[0]
-        expansion = await run_expand(
-            gap, gap.zoom_run_id, payload["attempt"], state.graph, llm(), VENDOR_IDEONOMY,
-        )
+        note_activity(gap.zoom_run_id,
+                      f"Ideonomy Expansion attempt {payload['attempt']} started (Opus)")
+        try:
+            expansion = await run_expand(
+                gap, gap.zoom_run_id, payload["attempt"], state.graph, llm(), VENDOR_IDEONOMY,
+            )
+        except Exception as exc:
+            note_activity(gap.zoom_run_id,
+                          f"Ideonomy Expansion failed: {type(exc).__name__}: {exc}")
+            state.bus.publish({"type": "expansion_failed", "gap_id": gap.gap_id,
+                               "attempt": payload["attempt"], "error": str(exc)})
+            raise
         state.sidecar.put_expansion(expansion)
+        note_activity(gap.zoom_run_id,
+                      f"Ideonomy Expansion attempt {expansion.attempt} ready "
+                      f"({len(expansion.ideas)} ideas)")
         state.bus.publish({"type": "expansion_ready", "gap_id": gap.gap_id,
                            "attempt": expansion.attempt})
         state.bus.publish({"type": "spend", "spend": state.meter.totals()})

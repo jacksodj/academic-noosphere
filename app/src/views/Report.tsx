@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EvidenceChip, WorkChip } from "../components";
-import { expandGap, getExpansions, getReport, getReportMarkdown, listRuns } from "../endpoints";
+import {
+  expandGap,
+  getExpansions,
+  getReport,
+  getReportMarkdown,
+  listRuns,
+  subscribeEvents,
+} from "../endpoints";
 import type { Gap, GapKind, GapReport, IdeonomyExpansion, Run, WorkRef } from "../types";
 
 const GAP_KINDS: GapKind[] = ["structural", "narrative", "temporal"];
@@ -39,25 +46,61 @@ function ScoreChips({ gap }: { gap: Gap }) {
 function IdeonomyPanel({ gap, works }: { gap: Gap; works: Record<string, WorkRef> }) {
   const [open, setOpen] = useState(false);
   const [expansions, setExpansions] = useState<IdeonomyExpansion[] | null>(null);
+  // Expansion generation is async (job queue + Opus, ~1min): `busy` covers the
+  // whole wait, resolved by SSE expansion_ready/failed with a poll fallback.
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function refreshExpansions(): Promise<IdeonomyExpansion[] | null> {
+    return getExpansions(gap.gap_id)
+      .then((list) => {
+        setExpansions(list);
+        return list;
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        return null;
+      });
+  }
+
   useEffect(() => {
     if (!open || expansions !== null) return;
-    getExpansions(gap.gap_id)
-      .then(setExpansions)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    void refreshExpansions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on open
   }, [open, expansions, gap.gap_id]);
+
+  useEffect(() => {
+    if (!busy) return;
+    const expected = (expansions?.length ?? 0) + 1;
+    const unsubscribe = subscribeEvents((event) => {
+      if (event.gap_id !== gap.gap_id) return;
+      if (event.type === "expansion_ready") {
+        void refreshExpansions().then(() => setBusy(false));
+      } else if (event.type === "expansion_failed") {
+        setError(String(event.error ?? "expansion failed"));
+        setBusy(false);
+      }
+    });
+    // Poll fallback in case the SSE stream is down.
+    const timer = setInterval(() => {
+      void refreshExpansions().then((list) => {
+        if (list && list.length >= expected) setBusy(false);
+      });
+    }, 15000);
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-arm per wait
+  }, [busy, gap.gap_id]);
 
   async function runExpand() {
     setBusy(true);
     setError(null);
     try {
-      const expansion = await expandGap(gap.gap_id);
-      setExpansions((prev) => [...(prev ?? []), expansion]);
+      await expandGap(gap.gap_id); // 202 ack; result arrives via SSE/poll above
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
       setBusy(false);
     }
   }

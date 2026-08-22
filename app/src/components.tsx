@@ -97,3 +97,33 @@ export function stageProgressLabel(p: {
   const eta = p.eta_s != null && p.eta_s > 0 ? ` · ~${fmtDuration(p.eta_s)} left` : "";
   return `${p.step} ${p.done.toLocaleString()}/${p.total.toLocaleString()}${eta}`;
 }
+
+/**
+ * Route-level error boundary: a render crash shows an inline error card
+ * instead of white-screening the whole app.
+ */
+import { Component, type ReactNode } from "react";
+
+export class ViewErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="card view-error">
+          <h2>This view hit a rendering error</h2>
+          <p className="mono small">{this.state.error.message}</p>
+          <button onClick={() => this.setState({ error: null })}>Try again</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
