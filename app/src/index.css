@@ -1060,3 +1060,13 @@ a.work-link:hover {
   color: var(--accent);
   text-decoration: underline;
 }
+
+.cite-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.cite-link:hover {
+  text-decoration: underline;
+}

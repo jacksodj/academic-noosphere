@@ -206,6 +206,31 @@ def assemble_report(run_id: str, sidecar: Any, graph: Any, weights: dict) -> dic
 
 # -- Markdown rendering -------------------------------------------------------
 
+def _linkify_citations(statement: str, evidence: list[dict]) -> str:
+    """Turn the statement's inline [n] markers into Markdown links.
+
+    Indices are 0-based positions into the gap's evidence array (the list the
+    synthesis prompt numbered); unresolvable markers are left as-is.
+    """
+    import re
+
+    def _url(ev: dict) -> str | None:
+        if ev.get("kind") == "work" and ev.get("work_id"):
+            doi = ev.get("doi")
+            return f"https://doi.org/{doi}" if doi else f"https://openalex.org/{ev['work_id']}"
+        return ev.get("url")
+
+    def _sub(m: "re.Match[str]") -> str:
+        idx = int(m.group(1))
+        if 0 <= idx < len(evidence) and (url := _url(evidence[idx])):
+            return f"[\\[{idx}\\]]({url})"
+        return m.group(0)
+
+    return re.sub(r"\[(\d+)\]", _sub, statement)
+
+
+
+
 
 def _citation(ev: dict) -> str | None:
     if ev.get("kind") == "work" and ev.get("work_id"):
@@ -275,7 +300,7 @@ def to_markdown(report: dict) -> str:
         lines += [
             f"### {gap.get('rank', '?')}. {gap.get('gap_id', '?')} ({kinds})",
             "",
-            gap.get("statement", ""),
+            _linkify_citations(gap.get("statement", ""), gap.get("evidence", [])),
             "",
             "**Evidence**",
             "",

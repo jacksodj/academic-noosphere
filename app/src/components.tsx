@@ -148,3 +148,50 @@ export class ViewErrorBoundary extends Component<
     return this.props.children;
   }
 }
+
+/**
+ * Statement text with the LLM's inline `[n]` citations rendered as live links.
+ * Indices are 0-based positions into the gap's evidence array (the exact list
+ * the synthesis prompt numbered); unresolvable markers stay plain text.
+ */
+export function CitedText({
+  text,
+  evidence,
+  works,
+}: {
+  text: string;
+  evidence: EvidenceItem[];
+  works?: Record<string, WorkRef>;
+}) {
+  const parts = text.split(/(\[\d+\])/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = /^\[(\d+)\]$/.exec(part);
+        if (!m) return <span key={i}>{part}</span>;
+        const ev = evidence[Number(m[1])];
+        const href =
+          ev?.kind === "work" && ev.work_id
+            ? workUrl(ev.work_id, works?.[ev.work_id]?.doi)
+            : ev?.url ?? null;
+        if (!href) return <span key={i}>{part}</span>;
+        const title =
+          ev.work_id != null
+            ? (works?.[ev.work_id]?.title ?? ev.work_id)
+            : (ev.url ?? "");
+        return (
+          <a
+            key={i}
+            className="cite-link"
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            title={title}
+          >
+            {part}
+          </a>
+        );
+      })}
+    </>
+  );
+}

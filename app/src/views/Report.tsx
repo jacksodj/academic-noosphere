@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EvidenceChip, WorkChip } from "../components";
+import { CitedText, EvidenceChip, WorkChip } from "../components";
 import {
   expandGap,
   getExpansions,
@@ -371,7 +371,9 @@ export default function Report() {
                   <span className="muted mono small">{gap.gap_id}</span>
                 </div>
               </div>
-              <p className="gap-statement">{gap.statement}</p>
+              <p className="gap-statement">
+                <CitedText text={gap.statement} evidence={gap.evidence} works={report.works} />
+              </p>
               <ScoreChips gap={gap} />
               <div className="chip-row evidence-row">
                 <span className="muted small">Evidence:</span>
