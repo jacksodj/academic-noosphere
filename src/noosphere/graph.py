@@ -72,6 +72,18 @@ class GraphStore:
         """Flush and close the database (checkpoints the WAL)."""
         self._db.close()
 
+    def checkpoint(self) -> None:
+        """Flush the WAL into the main store (best-effort durability).
+
+        A corrupted-WAL recovery discards unflushed writes; checkpointing
+        right after a persist keeps completed survey data out of that
+        blast radius.
+        """
+        try:
+            self._con.execute("CHECKPOINT")
+        except Exception:
+            pass
+
     def _execute(self, cypher: str, params: dict[str, Any] | None = None) -> Any:
         if params is None:
             return self._con.execute(cypher)

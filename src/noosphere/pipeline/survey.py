@@ -518,6 +518,7 @@ class SurveyService:
         self._note(f"Persist: {len(citations)} citation edges written")
         await asyncio.to_thread(self._add_published_in, published_in)
         self._sidecar.add_run_works(run.run_id, kept)
+        await asyncio.to_thread(self._graph.checkpoint)  # durable before "done"
         self._note("Persist: run snapshot recorded")
 
     def _add_published_in(self, edges: list[tuple[str, str, Provenance]]) -> None:
