@@ -123,6 +123,18 @@ class Sidecar:
     def close(self) -> None:
         self._con.close()
 
+    def _checkpoint(self) -> None:
+        """Flush the WAL into the main file (best-effort durability).
+
+        Called after rare, high-value writes (gaps, expansions, candidate
+        status) — a hard kill mid-WAL-checkpoint was observed dropping the
+        tail of the WAL on replay, silently losing the newest rows.
+        """
+        try:
+            self._con.execute("CHECKPOINT")
+        except Exception:
+            pass
+
     # -- runs & snapshots ----------------------------------------------------
 
     def create_run(self, run: Run) -> None:
@@ -346,6 +358,7 @@ class Sidecar:
             "INSERT OR REPLACE INTO whitespace VALUES (?, ?, ?)",
             [w.whitespace_id, w.run_id, w.model_dump_json()],
         )
+        self._checkpoint()
 
     def delete_whitespace(self, whitespace_id: str) -> None:
         self._con.execute(
@@ -364,6 +377,7 @@ class Sidecar:
             "INSERT OR REPLACE INTO gaps VALUES (?, ?, ?, ?)",
             [g.gap_id, g.whitespace_id, g.zoom_run_id, g.model_dump_json()],
         )
+        self._checkpoint()
 
     def list_gaps(self, zoom_run_id: str | None = None) -> list[Gap]:
         if zoom_run_id is not None:
@@ -382,6 +396,7 @@ class Sidecar:
             "INSERT OR REPLACE INTO expansions VALUES (?, ?, ?)",
             [e.gap_id, e.attempt, e.model_dump_json()],
         )
+        self._checkpoint()
 
     def list_expansions(self, gap_id: str) -> list[IdeonomyExpansion]:
         rows = self._con.execute(

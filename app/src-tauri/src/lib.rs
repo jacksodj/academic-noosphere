@@ -141,7 +141,7 @@ pub fn run() {
                 let _ = Command::new("kill")
                     .args(["-TERM", &child.id().to_string()])
                     .status();
-                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                let deadline = std::time::Instant::now() + Duration::from_secs(25);
                 loop {
                     match child.try_wait() {
                         Ok(Some(_)) => break,
