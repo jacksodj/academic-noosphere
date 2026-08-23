@@ -91,3 +91,61 @@ def corpus_insights(
         "active_topics": active,
         "year_histogram": {str(y): n for y, n in sorted(year_histogram.items())},
     }
+
+
+def list_works(
+    run_id: str,
+    sidecar: Any,
+    graph: Any,
+    *,
+    topic_id: str | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    q: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict:
+    """Filtered, citation-ranked work listing over a Run Snapshot.
+
+    Backs the Sources explorer: topic / year-range / title-substring filters,
+    sorted by cited_by_count desc. Pure graph reads.
+    """
+    snapshot = sidecar.get_run_works(run_id)
+    allowed: set[str] | None = None
+    if topic_id is not None:
+        allowed = {
+            wid for wid, tid, _s in graph.work_topic_rows() if tid == topic_id
+        }
+    needle = q.lower() if q else None
+
+    rows = []
+    for wid in snapshot:
+        if allowed is not None and wid not in allowed:
+            continue
+        w = graph.get_work(wid)
+        if w is None:
+            continue
+        if year_from is not None and (w.year is None or w.year < year_from):
+            continue
+        if year_to is not None and (w.year is None or w.year > year_to):
+            continue
+        if needle and needle not in (w.title or "").lower():
+            continue
+        rows.append(w)
+    rows.sort(key=lambda w: (-w.cited_by_count, w.openalex_id))
+    page = rows[offset : offset + limit]
+    return {
+        "run_id": run_id,
+        "total": len(rows),
+        "offset": offset,
+        "works": [
+            {
+                "work_id": w.openalex_id,
+                "title": w.title,
+                "year": w.year,
+                "doi": w.doi,
+                "cited_by_count": w.cited_by_count,
+            }
+            for w in page
+        ],
+    }

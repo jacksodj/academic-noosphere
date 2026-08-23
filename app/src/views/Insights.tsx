@@ -7,7 +7,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { workUrl } from "../components";
+import { runLabel, workUrl } from "../components";
+import { Link } from "react-router-dom";
 import { getInsights, listRuns } from "../endpoints";
 import type { CorpusInsights, Run } from "../types";
 
@@ -51,7 +52,7 @@ export default function Insights() {
             <select value={runId ?? ""} onChange={(e) => setParams({ run: e.target.value })}>
               {coarseRuns.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {r.field_name} — {r.run_id.slice(0, 8)}
+                  {runLabel(r)}
                 </option>
               ))}
             </select>
@@ -76,7 +77,7 @@ export default function Insights() {
                 <li key={w.work_id}>
                   <div className="cited-row">
                     <a href={workUrl(w.work_id, w.doi)} target="_blank" rel="noreferrer">
-                      {w.title}
+                      {w.title?.trim() || `(untitled — ${w.work_id})`}
                     </a>
                     <span className="muted small">
                       {w.year ?? "?"} · <span className="mono">{w.work_id}</span>
@@ -107,7 +108,13 @@ export default function Insights() {
               {insights.active_topics.map((t) => (
                 <li key={t.topic_id}>
                   <div className="cited-row">
-                    <span>{t.name}</span>
+                    <Link
+                      className="plain-link"
+                      to={`/sources?run=${runId}&topic_id=${t.topic_id}&topic_name=${encodeURIComponent(t.name)}&year_from=${insights.recent_cutoff_year}`}
+                      title="Browse these works in Sources"
+                    >
+                      {t.name} →
+                    </Link>
                     <span className="muted small">
                       {Math.round(t.recent_share * 100)}% of its {t.total_count} works are
                       recent
@@ -131,13 +138,18 @@ export default function Insights() {
             <h2>Publication years</h2>
             <div className="year-hist">
               {histYears.map(([year, n]) => (
-                <div key={year} className="year-col" title={`${year}: ${n} works`}>
+                <Link
+                  key={year}
+                  className="year-col"
+                  to={`/sources?run=${runId}&year_from=${year}&year_to=${year}`}
+                  title={`${year}: ${n} works — browse in Sources`}
+                >
                   <span
                     className="year-col-fill"
                     style={{ height: `${Math.max(2, (100 * n) / maxHist)}%` }}
                   />
                   <span className="year-col-label">{year.slice(2)}</span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

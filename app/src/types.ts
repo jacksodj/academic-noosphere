@@ -180,6 +180,14 @@ export interface CorpusInsights {
   year_histogram: Record<string, number>;
 }
 
+/** GET /api/runs/{id}/works — filtered, citation-ranked work listing. */
+export interface WorksPage {
+  run_id: string;
+  total: number;
+  offset: number;
+  works: { work_id: string; title: string; year: number | null; doi: string | null; cited_by_count: number }[];
+}
+
 /** POST /api/surveys request body (endpoint lands in wave 2). */
 export interface NewSurveyRequest {
   field_name: string;

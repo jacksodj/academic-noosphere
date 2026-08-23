@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EvidenceChip, ScoreBar } from "../components";
+import { EvidenceChip, ScoreBar, runLabel } from "../components";
 import {
   getReport,
   getWhitespace,
@@ -147,7 +147,7 @@ export default function Triage() {
             >
               {coarseRuns.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {r.run_id} — {r.field_name} ({r.status})
+                  {runLabel(r)}
                 </option>
               ))}
             </select>

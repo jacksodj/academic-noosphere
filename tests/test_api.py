@@ -554,3 +554,43 @@ class TestInsights:
 
     def test_insights_404s(self, client: TestClient) -> None:
         assert client.get("/api/runs/nope/insights").status_code == 404
+
+
+class TestWorksList:
+    def test_filters_by_topic_year_and_query(self, client: TestClient, state: AppState) -> None:
+        from noosphere.models import Provenance, Topic, Work, WorkTopic
+
+        prov = Provenance(source_api="openalex", source_id="t", retrieved_at=NOW)
+        state.sidecar.create_run(make_run("run-w"))
+        state.graph.init_schema()
+        state.graph.upsert_works([
+            Work(openalex_id="W1", title="Memory consolidation", year=2010,
+                 cited_by_count=500, provenance=prov),
+            Work(openalex_id="W2", title="Agent memory buffers", year=2025,
+                 cited_by_count=50, provenance=prov),
+            Work(openalex_id="W3", title="Quantum chromodynamics", year=2025,
+                 cited_by_count=900, provenance=prov),
+        ])
+        state.graph.upsert_topics([Topic(openalex_id="T1", display_name="Memory",
+                                         level="topic", provenance=prov)])
+        state.graph.add_work_topics([
+            WorkTopic(work_id="W1", topic_id="T1", score=0.9, provenance=prov),
+            WorkTopic(work_id="W2", topic_id="T1", score=0.9, provenance=prov),
+        ])
+        state.sidecar.add_run_works("run-w", ["W1", "W2", "W3"])
+
+        body = client.get("/api/runs/run-w/works").json()
+        assert body["total"] == 3
+        assert body["works"][0]["work_id"] == "W3"  # citation-ranked
+
+        body = client.get("/api/runs/run-w/works?topic_id=T1").json()
+        assert [w["work_id"] for w in body["works"]] == ["W1", "W2"]
+
+        body = client.get("/api/runs/run-w/works?year_from=2025&year_to=2025").json()
+        assert {w["work_id"] for w in body["works"]} == {"W2", "W3"}
+
+        body = client.get("/api/runs/run-w/works?q=memory").json()
+        assert body["total"] == 2
+
+    def test_works_404s(self, client: TestClient) -> None:
+        assert client.get("/api/runs/nope/works").status_code == 404

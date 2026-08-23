@@ -1165,3 +1165,33 @@ a.work-link:hover {
   color: var(--text-muted);
   margin-top: 2px;
 }
+
+.sources-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.sources-controls input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.4rem 0.6rem;
+  min-width: 16rem;
+}
+
+.filter-chip {
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--accent);
+  border-color: var(--accent);
+  background: transparent;
+}
+
+a.year-col {
+  text-decoration: none;
+}

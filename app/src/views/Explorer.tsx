@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import Sigma from "sigma";
 import { getReport, getWhitespace, listRuns } from "../endpoints";
 import type { GapReport, ReportCommunity, Run, WhitespaceCandidate } from "../types";
-import { workUrl } from "../components";
+import { runLabel, workUrl } from "../components";
 import { candidateStat, parseCandidate } from "../whitespace";
 
 interface ThemeColors {
@@ -294,7 +294,7 @@ export default function Explorer() {
             <select value={runId ?? ""} onChange={(e) => setParams({ run: e.target.value })}>
               {coarseRuns.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {r.run_id} — {r.field_name}
+                  {runLabel(r)}
                 </option>
               ))}
             </select>

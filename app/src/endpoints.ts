@@ -20,6 +20,7 @@ import {
 import type {
   AwsCheckResult,
   CorpusInsights,
+  WorksPage,
   CredentialStatus,
   Gap,
   RunActivity,
@@ -227,6 +228,28 @@ export function saveSettings(settings: Settings): Promise<Settings> {
 export function redetectWhitespace(runId: string): Promise<{ job_id: string; run_id: string }> {
   if (apiConfig.mock) return mockDelay({ job_id: "job-mock-redetect", run_id: runId });
   return post(`/api/runs/${encodeURIComponent(runId)}/redetect`, {});
+}
+
+/** Filtered, citation-ranked work listing (Sources explorer). */
+export function listWorks(
+  runId: string,
+  filters: { topic_id?: string; year_from?: string; year_to?: string; q?: string } = {},
+): Promise<WorksPage> {
+  if (apiConfig.mock) {
+    return mockDelay({
+      run_id: runId,
+      total: 2,
+      offset: 0,
+      works: [
+        { work_id: "W2267186426", title: "Long Short-Term Memory-Networks for Machine Reading", year: 2016, doi: "10.0000/mock2", cited_by_count: 18034 },
+        { work_id: "W4409120334", title: "Benchmarking Long-Horizon Agent Memory", year: 2026, doi: null, cited_by_count: 12 },
+      ],
+    });
+  }
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v) qs.set(k, v);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return get(`/api/runs/${encodeURIComponent(runId)}/works${suffix}`);
 }
 
 /** Corpus insights (top-cited works, recently-active topics). */

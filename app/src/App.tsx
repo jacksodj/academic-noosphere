@@ -11,6 +11,7 @@ import Onboarding from "./views/Onboarding";
 import Report from "./views/Report";
 import RunDetail from "./views/RunDetail";
 import Settings from "./views/Settings";
+import Sources from "./views/Sources";
 import Triage from "./views/Triage";
 
 const NAV = [
@@ -19,6 +20,7 @@ const NAV = [
   { to: "/report", label: "Report", end: false },
   { to: "/explorer", label: "Explorer", end: false },
   { to: "/insights", label: "Insights", end: false },
+  { to: "/sources", label: "Sources", end: false },
   { to: "/settings", label: "Settings", end: false },
 ];
 
@@ -99,6 +101,7 @@ export default function App() {
           <Route path="/report" element={<Report />} />
           <Route path="/explorer" element={<Explorer />} />
           <Route path="/insights" element={<Insights />} />
+          <Route path="/sources" element={<Sources />} />
           <Route path="/settings" element={<Settings />} />
           </Routes>
         </ViewErrorBoundary>

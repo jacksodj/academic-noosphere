@@ -195,3 +195,13 @@ export function CitedText({
     </>
   );
 }
+
+/** Consistent human label for a run everywhere: "field — id8 (status)". */
+export function runLabel(r: {
+  run_id: string;
+  field_name: string;
+  status?: string;
+}): string {
+  const status = r.status && r.status !== "completed" ? ` (${r.status})` : "";
+  return `${r.field_name} — ${r.run_id.slice(0, 8)}${status}`;
+}

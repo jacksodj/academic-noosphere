@@ -135,6 +135,30 @@ async def run_insights(request: Request, run_id: str) -> dict[str, Any]:
     )
 
 
+@router.get("/runs/{run_id}/works")
+async def run_works_list(
+    request: Request,
+    run_id: str,
+    topic_id: str | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    q: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Filtered, citation-ranked work listing (Sources explorer)."""
+    from noosphere.analysis.insights import list_works
+
+    state = _state(request)
+    if state.sidecar.get_run(run_id) is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    return await asyncio.to_thread(
+        list_works, run_id, state.sidecar, state.graph,
+        topic_id=topic_id, year_from=year_from, year_to=year_to,
+        q=q, limit=min(limit, 500), offset=max(offset, 0),
+    )
+
+
 @router.get("/runs/{run_id}/progress")
 async def run_progress(request: Request, run_id: str) -> dict[str, Any]:
     """Stage-level progress for a run, derived from its job's checkpoint."""
