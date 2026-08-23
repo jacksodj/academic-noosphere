@@ -324,6 +324,7 @@ class SurveyService:
             return
         await self._hydrate(works, kept_ids)
         kept = [wid for wid in kept_ids if wid in works]
+        await self._repair_missing_titles(works, kept)
         if vectors is None:
             embedded = await self._embed_all([embed_text(works[w]) for w in kept])
             vectors = dict(zip(kept, embedded))
@@ -332,6 +333,36 @@ class SurveyService:
         done.append("persist")
         state["done"] = done
         checkpoint.save(state)
+
+    async def _repair_missing_titles(
+        self, works: dict[str, dict], kept: list[str], cap: int = 25
+    ) -> None:
+        """Crossref fallback for OpenAlex records that arrive titleless.
+
+        Rare (heavily-merged records); patched into the raw dict so
+        parse_work persists the recovered title. Best-effort, capped.
+        """
+        from noosphere.config import get_credential
+        from noosphere.sources.enrich import resolve_title
+
+        broken = [
+            wid
+            for wid in kept
+            if not (works[wid].get("display_name") or works[wid].get("title"))
+            and works[wid].get("doi")
+        ][:cap]
+        if not broken:
+            return
+        mailto = get_credential("crossref_mailto")
+        s2_key = get_credential("s2_api_key")
+        repaired = 0
+        for wid in broken:
+            title = await resolve_title(works[wid]["doi"], mailto=mailto, s2_api_key=s2_key)
+            if title:
+                works[wid]["display_name"] = title
+                repaired += 1
+        if repaired:
+            self._note(f"Repaired {repaired} missing titles via Crossref/S2")
 
     async def _hydrate(self, works: dict[str, dict], ids: list[str]) -> None:
         missing = [i for i in ids if i not in works]
