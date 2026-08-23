@@ -119,6 +119,22 @@ async def run_activity(
     }
 
 
+@router.get("/runs/{run_id}/insights")
+async def run_insights(request: Request, run_id: str) -> dict[str, Any]:
+    """Corpus insights: most-cited works + recently-active topics.
+
+    Pure graph reads, computed on demand off the event loop.
+    """
+    from noosphere.analysis.insights import corpus_insights
+
+    state = _state(request)
+    if state.sidecar.get_run(run_id) is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    return await asyncio.to_thread(
+        corpus_insights, run_id, state.sidecar, state.graph
+    )
+
+
 @router.get("/runs/{run_id}/progress")
 async def run_progress(request: Request, run_id: str) -> dict[str, Any]:
     """Stage-level progress for a run, derived from its job's checkpoint."""

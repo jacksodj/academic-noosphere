@@ -19,6 +19,7 @@ import {
 } from "./mock";
 import type {
   AwsCheckResult,
+  CorpusInsights,
   CredentialStatus,
   Gap,
   RunActivity,
@@ -226,6 +227,28 @@ export function saveSettings(settings: Settings): Promise<Settings> {
 export function redetectWhitespace(runId: string): Promise<{ job_id: string; run_id: string }> {
   if (apiConfig.mock) return mockDelay({ job_id: "job-mock-redetect", run_id: runId });
   return post(`/api/runs/${encodeURIComponent(runId)}/redetect`, {});
+}
+
+/** Corpus insights (top-cited works, recently-active topics). */
+export function getInsights(runId: string): Promise<CorpusInsights> {
+  if (apiConfig.mock) {
+    return mockDelay({
+      run_id: runId,
+      snapshot_size: 8000,
+      resolved_works: 8000,
+      recent_cutoff_year: 2025,
+      top_cited: [
+        { work_id: "W2127218421", title: "Some methods for classification and analysis of multivariate observations", year: 1967, doi: "10.0000/mock", cited_by_count: 41210 },
+        { work_id: "W2267186426", title: "Long Short-Term Memory-Networks for Machine Reading", year: 2016, doi: "10.0000/mock2", cited_by_count: 18034 },
+      ],
+      active_topics: [
+        { topic_id: "T10028", name: "Advanced Neural Network Applications", recent_count: 214, total_count: 900, recent_share: 0.238 },
+        { topic_id: "T10181", name: "Agent Memory Architectures", recent_count: 121, total_count: 160, recent_share: 0.756 },
+      ],
+      year_histogram: { "2023": 900, "2024": 1100, "2025": 800, "2026": 300 },
+    });
+  }
+  return get(`/api/runs/${encodeURIComponent(runId)}/insights`);
 }
 
 /** Whitespace Candidates surfaced by a coarse run. */

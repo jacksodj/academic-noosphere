@@ -169,6 +169,17 @@ export interface RunActivity {
   message: string;
 }
 
+/** GET /api/runs/{id}/insights — corpus stats (top-cited, active topics). */
+export interface CorpusInsights {
+  run_id: string;
+  snapshot_size: number;
+  resolved_works: number;
+  recent_cutoff_year: number;
+  top_cited: { work_id: string; title: string; year: number | null; doi: string | null; cited_by_count: number }[];
+  active_topics: { topic_id: string; name: string; recent_count: number; total_count: number; recent_share: number }[];
+  year_histogram: Record<string, number>;
+}
+
 /** POST /api/surveys request body (endpoint lands in wave 2). */
 export interface NewSurveyRequest {
   field_name: string;

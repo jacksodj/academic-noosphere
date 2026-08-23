@@ -512,3 +512,45 @@ class TestRedetect:
         state.sidecar.create_run(make_run("run-z", phase=RunPhase.ZOOM))
         assert client.post("/api/runs/run-z/redetect").status_code == 422
         assert client.post("/api/runs/nope/redetect").status_code == 404
+
+
+class TestInsights:
+    def test_insights_top_cited_and_active_topics(
+        self, client: TestClient, state: AppState
+    ) -> None:
+        from noosphere.models import Provenance, Topic, Work, WorkTopic
+
+        prov = Provenance(source_api="openalex", source_id="test", retrieved_at=NOW)
+        state.sidecar.create_run(make_run("run-i"))
+        works = [
+            Work(openalex_id="W1", title="Old classic", year=2010,
+                 cited_by_count=5000, provenance=prov),
+            Work(openalex_id="W2", title="Hot new preprint", year=2026,
+                 cited_by_count=40, provenance=prov),
+            Work(openalex_id="W3", title="Recent solid", year=2025,
+                 cited_by_count=90, provenance=prov),
+        ]
+        state.graph.init_schema()
+        state.graph.upsert_works(works)
+        state.graph.upsert_topics(
+            [Topic(openalex_id="T1", display_name="Agent Memory", level="topic",
+                   provenance=prov)]
+        )
+        state.graph.add_work_topics(
+            [WorkTopic(work_id=w.openalex_id, topic_id="T1", score=0.9, provenance=prov)
+             for w in works]
+        )
+        state.sidecar.add_run_works("run-i", ["W1", "W2", "W3"])
+
+        body = client.get("/api/runs/run-i/insights").json()
+        assert body["snapshot_size"] == 3
+        assert body["top_cited"][0]["work_id"] == "W1"
+        assert body["top_cited"][0]["cited_by_count"] == 5000
+        (topic,) = body["active_topics"]
+        assert topic["name"] == "Agent Memory"
+        assert topic["recent_count"] == 2  # 2025 + 2026 works
+        assert topic["total_count"] == 3
+        assert body["year_histogram"]["2026"] == 1
+
+    def test_insights_404s(self, client: TestClient) -> None:
+        assert client.get("/api/runs/nope/insights").status_code == 404
