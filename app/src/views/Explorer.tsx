@@ -1,4 +1,5 @@
 import Graph from "graphology";
+import forceAtlas2 from "graphology-layout-forceatlas2";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Sigma from "sigma";
@@ -136,16 +137,24 @@ export default function Explorer() {
     const theme = readTheme();
     const graph = new Graph({ multi: true });
 
-    // Community super-nodes on a circle (size-sorted); node size ~ sqrt(works).
+    // Community super-nodes, seeded on a deterministic circle (size-sorted);
+    // node size ~ sqrt(works). ForceAtlas2 below pulls citation-dense
+    // communities together so clusters are spatial, not just labeled.
     const n = merged.entries.length;
     const R = 100;
     const pos = new Map<string, { x: number; y: number }>();
+    // work id -> owning community key (from the report's per-community member
+    // lists) — used to anchor whitespace nodes by their evidence works.
+    const workCommunity = new Map<string, string>();
     merged.entries.forEach((entry, i) => {
       const c = entry.community;
       const angle = (2 * Math.PI * i) / n - Math.PI / 2;
       const x = R * Math.cos(angle);
       const y = R * Math.sin(angle);
       pos.set(entry.key, { x, y });
+      for (const wid of c.works) {
+        if (!workCommunity.has(wid)) workCommunity.set(wid, entry.key);
+      }
       const base = c.label ?? `Community ${c.id}`;
       const dupe = (merged.labelCounts.get(base) ?? 0) > 1;
       graph.addNode(entry.key, {
@@ -158,67 +167,79 @@ export default function Explorer() {
       });
     });
 
-    // Inter-community edges (within each report), thickness ~ density weight.
+    // Inter-community edges (within each report), thickness ~ density weight;
+    // `weight` drives the force layout's attraction.
     reports.forEach((rep, ri) => {
       for (const e of rep.community_edges) {
         const a = `c${ri}:${e.source}`;
         const b = `c${ri}:${e.target}`;
         if (pos.has(a) && pos.has(b)) {
-          graph.addEdge(a, b, { size: 0.5 + e.weight * 5, color: theme.border });
+          graph.addEdge(a, b, {
+            size: 0.5 + e.weight * 5,
+            color: theme.border,
+            weight: 1 + e.weight * 10,
+          });
         }
       }
     });
 
-    // Whitespace candidates: bridges as a highlighted mid-point node with
-    // thin connector edges (dashed-equivalent); thin cells on an outer ring.
-    let thinIdx = 0;
-    const thinCells = candidates.filter((c) => c.kind === "thin_cell");
+    // Whitespace nodes: seeded on an outer ring, then anchored by GHOST
+    // edges to the communities that hold their evidence works — the force
+    // layout pulls each candidate toward the region its missing citations
+    // belong to (bridges settle between their two sides).
     const wsLabel = (c: WhitespaceCandidate): string => {
       const parsed = parseCandidate(c);
       const title =
         parsed.title.length > 32 ? `${parsed.title.slice(0, 32)}…` : parsed.title;
       return c.status === "candidate" ? title : `${title} (${c.status.replace("_", " ")})`;
     };
-    // Node size scales with how surprising the hole is (expected works).
     const wsSize = (c: WhitespaceCandidate): number => {
       const expected = parseCandidate(c).expected;
       return expected ? Math.min(14, 4 + Math.sqrt(expected)) : 5;
     };
+    const ghostColor = `${theme.warn}55`; // translucent: expected-but-missing citations
+    let wsIdx = 0;
     for (const c of candidates) {
       const wsColor = c.status === "confirmed" ? theme.warn : theme.muted;
-      if (c.kind === "bridge" && c.community_a !== null && c.community_b !== null) {
-        const keys = [...pos.keys()];
-        const a = pos.get(`stub:${c.community_a}`) ?? (keys[0] ? pos.get(keys[0]) : undefined);
-        const b = pos.get(`stub:${c.community_b}`) ?? (keys[1] ? pos.get(keys[1]) : undefined);
-        if (!a || !b) continue;
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        graph.addNode(c.whitespace_id, {
-          x: mx * 1.15,
-          y: my * 1.15,
-          size: wsSize(c),
-          label: wsLabel(c),
-          color: wsColor,
-          kind: "whitespace",
-        });
-        // connector edges only when the referenced communities exist as nodes
-        if (pos.has(`stub:${c.community_a}`) && pos.has(`stub:${c.community_b}`)) {
-          graph.addEdge(`stub:${c.community_a}`, c.whitespace_id, { size: 1, color: wsColor });
-          graph.addEdge(c.whitespace_id, `stub:${c.community_b}`, { size: 1, color: wsColor });
+      const angle = (2 * Math.PI * wsIdx) / Math.max(1, candidates.length);
+      wsIdx += 1;
+      graph.addNode(c.whitespace_id, {
+        x: 1.6 * R * Math.cos(angle),
+        y: 1.6 * R * Math.sin(angle),
+        size: wsSize(c),
+        label: wsLabel(c),
+        color: wsColor,
+        kind: "whitespace",
+      });
+      const anchors = new Set<string>();
+      for (const ev of c.evidence) {
+        if (ev.work_id) {
+          const key = workCommunity.get(ev.work_id);
+          if (key) anchors.add(key);
         }
-      } else if (c.kind === "thin_cell") {
-        const angle = (2 * Math.PI * thinIdx) / Math.max(1, thinCells.length) - Math.PI / 4;
-        thinIdx += 1;
-        graph.addNode(c.whitespace_id, {
-          x: 1.45 * R * Math.cos(angle),
-          y: 1.45 * R * Math.sin(angle),
-          size: wsSize(c),
-          label: wsLabel(c),
-          color: wsColor,
-          kind: "whitespace",
+      }
+      for (const key of [...anchors].slice(0, 4)) {
+        graph.addEdge(c.whitespace_id, key, {
+          size: 1,
+          color: ghostColor,
+          weight: 2,
         });
       }
     }
+
+    // Force-directed layout: deterministic given the seeded positions and a
+    // fixed iteration count. Citation-dense communities cluster spatially;
+    // ghost edges place whitespace where its absent citations would run.
+    forceAtlas2.assign(graph, {
+      iterations: 400,
+      settings: {
+        ...forceAtlas2.inferSettings(graph),
+        edgeWeightInfluence: 1,
+        gravity: 0.8,
+        scalingRatio: 12,
+        slowDown: 5,
+      },
+    });
 
     const renderer = new Sigma(graph, container, {
       labelColor: { color: theme.text },
@@ -321,7 +342,7 @@ export default function Explorer() {
                 <span className="legend-dot" style={{ background: "var(--text-muted)" }} />{" "}
                 whitespace (other)
               </span>
-              <span>edge thickness ~ inter-community density</span>
+              <span>solid edge ~ citation density · faint edge = expected-but-missing citations (whitespace anchor)</span>
             </div>
             {reports.length === 0 && (
               <p className="muted small">
