@@ -33,8 +33,13 @@ code.
 
 ## Conventions
 
-- Development branch: `claude/mac-local-app-setup-p2kk2f`; `main` receives
-  merges/PRs.
+- Development branch: `claude/mac-local-app-setup-p2kk2f`; `main` is the
+  repository **default** and must always hold the latest code. After pushing a
+  work chunk to the development branch, fast-forward `main` in the same step:
+  `git push origin claude/mac-local-app-setup-p2kk2f:main`. If that push is
+  rejected (non-fast-forward), `main` has diverged — stop and reconcile via a
+  merge/PR rather than force-pushing. Never leave `main` behind at the end of a
+  session.
 - Python: uv-managed; run things with `uv run`. Scripts may use PEP 723 inline
   deps (see `scripts/phase0_spike.py`).
 - Record resolved decisions on their ticket (resolution comment + close) and
