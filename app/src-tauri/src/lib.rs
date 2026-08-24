@@ -5,10 +5,11 @@
 //! v1 runs the core via `uv run noosphere-core` from the repo checkout
 //! (frozen-binary sidecar is deferred to packaging — ticket #3). The repo root
 //! is resolved from NOOSPHERE_REPO if set, else the compile-time location of
-//! this crate (app/src-tauri → ../..).
+//! this crate (app/src-tauri → ../..), else conventional clone locations under
+//! $HOME — so a downloaded .app works on machines other than the build box.
 
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -22,26 +23,95 @@ struct Handshake {
 
 struct CoreProcess(Mutex<Option<Child>>);
 
+/// Fatal startup error: GUI-launched apps have no terminal, so surface the
+/// message in a native alert before exiting (best-effort), instead of dying
+/// silently in a panic the user never sees.
+fn fatal(msg: &str) -> ! {
+    eprintln!("fatal: {msg}");
+    let _ = Command::new("osascript")
+        .args([
+            "-e",
+            &format!(
+                "display alert \"Academic Noosphere\" message {} as critical",
+                serde_json::to_string(msg).unwrap()
+            ),
+        ])
+        .status();
+    std::process::exit(1);
+}
+
+fn is_repo(dir: &Path) -> bool {
+    dir.join("pyproject.toml").is_file() && dir.join("src/noosphere").is_dir()
+}
+
 fn repo_root() -> PathBuf {
     if let Ok(dir) = std::env::var("NOOSPHERE_REPO") {
         return PathBuf::from(dir);
     }
-    // app/src-tauri/../.. == repo root in a dev checkout.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("repo root not found; set NOOSPHERE_REPO")
+    // app/src-tauri/../.. == repo root in a dev checkout; the compile-time
+    // path is meaningless on a machine that downloaded the built .app, so
+    // fall through to conventional clone locations.
+    let mut candidates: Vec<PathBuf> =
+        vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidates.push(home.join("Code/academic-noosphere"));
+        candidates.push(home.join("academic-noosphere"));
+    }
+    for dir in candidates {
+        if let Ok(dir) = dir.canonicalize() {
+            if is_repo(&dir) {
+                return dir;
+            }
+        }
+    }
+    fatal(
+        "Could not find the academic-noosphere repo checkout.\n\n\
+         Clone it (git clone https://github.com/jacksodj/academic-noosphere) \
+         into ~/Code/academic-noosphere or ~/academic-noosphere, or launch \
+         with NOOSPHERE_REPO=/path/to/checkout.",
+    );
+}
+
+/// Locate `uv`. Finder-launched apps inherit the login PATH only partially
+/// (typically /usr/bin:/bin:/usr/sbin:/sbin), so the usual install locations
+/// are probed explicitly before trusting PATH.
+fn find_uv() -> PathBuf {
+    if let Ok(uv) = std::env::var("NOOSPHERE_UV") {
+        return PathBuf::from(uv);
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidates.push(home.join(".local/bin/uv"));
+        candidates.push(home.join(".cargo/bin/uv"));
+    }
+    candidates.push(PathBuf::from("/opt/homebrew/bin/uv"));
+    candidates.push(PathBuf::from("/usr/local/bin/uv"));
+    for uv in candidates {
+        if uv.is_file() {
+            return uv;
+        }
+    }
+    // Last resort: whatever PATH the process got.
+    PathBuf::from("uv")
 }
 
 fn spawn_core() -> (Child, Handshake) {
     let root = repo_root();
-    let mut child = Command::new("uv")
+    let uv = find_uv();
+    let mut child = match Command::new(&uv)
         .args(["run", "noosphere-core"])
         .current_dir(&root)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
-        .expect("failed to spawn `uv run noosphere-core` (is uv on PATH?)");
+    {
+        Ok(child) => child,
+        Err(e) => fatal(&format!(
+            "Failed to start the Python core via `{} run noosphere-core`: {e}.\n\n\
+             Install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh",
+            uv.display()
+        )),
+    };
 
     let stdout = child.stdout.take().expect("core stdout not captured");
     let (tx, rx) = std::sync::mpsc::channel();
@@ -55,11 +125,18 @@ fn spawn_core() -> (Child, Handshake) {
         for _ in reader.lines() {}
     });
 
-    let line = rx
-        .recv_timeout(Duration::from_secs(120))
-        .expect("timed out waiting for core handshake line");
-    let parsed: serde_json::Value =
-        serde_json::from_str(line.trim()).expect("core handshake was not valid JSON");
+    // First launch on a fresh machine runs `uv sync` implicitly (Python
+    // download + full dependency install), so the handshake can legitimately
+    // take minutes — hence the generous timeout.
+    let line = rx.recv_timeout(Duration::from_secs(600)).unwrap_or_else(|_| {
+        fatal(
+            "The Python core never produced its startup handshake.\n\n\
+             Try running `uv run noosphere-core` from the repo checkout in a \
+             terminal to see the underlying error.",
+        )
+    });
+    let parsed: serde_json::Value = serde_json::from_str(line.trim())
+        .unwrap_or_else(|_| fatal("The core's startup handshake was not valid JSON."));
     let handshake = Handshake {
         port: parsed["port"].as_u64().expect("handshake missing port") as u16,
         token: parsed["token"]
@@ -82,7 +159,7 @@ fn wait_for_api(port: u16) {
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-    panic!("core API on port {port} never started listening");
+    fatal(&format!("The core API on port {port} never started listening."));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

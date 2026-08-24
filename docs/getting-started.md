@@ -3,6 +3,16 @@
 Everything here reflects the code as shipped; where a value matters (credential
 names, env vars) it is quoted from `src/noosphere/config.py`.
 
+## 0. Fast path: download the prebuilt app
+
+If you just want to *run* the app (no Xcode/Rust/Node), grab the latest `.dmg`
+from [GitHub Releases](https://github.com/jacksodj/academic-noosphere/releases)
+and follow its notes: install uv, clone this repo to `~/Code/academic-noosphere`
+(or `~/academic-noosphere`, or set `NOOSPHERE_REPO`), right-click → Open on
+first launch (unsigned build). The shell runs the Python core from the checkout
+via uv, so `git pull` updates the core without re-downloading the app. The rest
+of this guide is the from-source path.
+
 ## 1. Prerequisites
 
 - macOS on Apple Silicon (the graph store and embedder ship arm64 wheels;
