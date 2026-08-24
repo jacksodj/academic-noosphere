@@ -25,3 +25,6 @@ data/
 
 # OS
 .DS_Store
+
+# Security-scan session tracking (local only)
+security-scan/
