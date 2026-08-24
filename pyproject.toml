@@ -19,6 +19,13 @@ dependencies = [
 [project.optional-dependencies]
 # Heavy/optional at runtime:
 embed = ["sentence-transformers>=3.0"]        # SPECTER2 local embedding (~440MB model)
+# Torch-free SPECTER2 inference for the packaged app (ticket #22): the ONNX
+# export produced by scripts/export_specter2_onnx.py + a fast tokenizer.
+onnx = [
+    "onnxruntime>=1.19",
+    "tokenizers>=0.20",
+    "numpy>=1.26",
+]
 # mcp<2 + pydantic-settings: fastmcp 2.14.0 (pulled in by mcp-proxy-for-aws)
 # breaks on the mcp 2.0 SDK (McpError moved) and imports pydantic_settings
 # without declaring it; both constraints keep the import working at runtime.
