@@ -23,6 +23,19 @@ export interface CredentialMeta {
   linkLabel: string | null;
 }
 
+export const SCHOLARLY_CRED_NAMES = [
+  "crossref_mailto",
+  "openalex_api_key",
+  "s2_api_key",
+  "ncbi_api_key",
+];
+
+export const AWS_CRED_NAMES = [
+  "aws_access_key_id",
+  "aws_secret_access_key",
+  "aws_session_token",
+];
+
 export const CREDENTIAL_META: CredentialMeta[] = [
   {
     name: "crossref_mailto",
@@ -64,6 +77,38 @@ export const CREDENTIAL_META: CredentialMeta[] = [
     howTo: "Free, from NCBI account settings. Raises PubMed limits to 10 req/s.",
     link: "https://account.ncbi.nlm.nih.gov/settings/",
     linkLabel: "account settings",
+  },
+  {
+    name: "aws_access_key_id",
+    label: "AWS access key ID",
+    required: false,
+    secret: false,
+    placeholder: "ASIA…",
+    howTo:
+      "Alternative to an SSO profile: paste the three values from your SSO portal's “Command line or programmatic access” page.",
+    link: null,
+    linkLabel: null,
+  },
+  {
+    name: "aws_secret_access_key",
+    label: "AWS secret access key",
+    required: false,
+    secret: true,
+    placeholder: "paste secret key",
+    howTo: "Second of the three pasted values.",
+    link: null,
+    linkLabel: null,
+  },
+  {
+    name: "aws_session_token",
+    label: "AWS session token",
+    required: false,
+    secret: true,
+    placeholder: "paste session token",
+    howTo:
+      "Third value. Ephemeral — typically expires after 1–12 h; when “Test AWS access” starts failing, paste a fresh set. Pasted keys take precedence over an ambient profile.",
+    link: null,
+    linkLabel: null,
   },
 ];
 

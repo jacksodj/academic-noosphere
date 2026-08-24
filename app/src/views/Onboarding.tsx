@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import { AwsCheck, CredentialsPanel } from "../credentials";
+import { AWS_CRED_NAMES, AwsCheck, CredentialsPanel, SCHOLARLY_CRED_NAMES } from "../credentials";
 import { EmbeddingModelPanel } from "../embedmodel";
 import { saveSettings } from "../endpoints";
 import type { CredentialStatus, Settings } from "../types";
@@ -85,7 +85,7 @@ export default function Onboarding({
         {step === 1 && (
           <>
             <h1>Scholarly APIs</h1>
-            <CredentialsPanel onStatus={setCreds} />
+            <CredentialsPanel names={SCHOLARLY_CRED_NAMES} onStatus={setCreds} />
             {!requiredSet && (
               <p className="muted">
                 The two starred entries are what v1 ingest actually uses — the rest can wait.
@@ -117,6 +117,11 @@ export default function Onboarding({
               The identity needs <code>bedrock:InvokeModel</code> (Opus 5 + Haiku 4.5) and,
               for Web Search, <code>bedrock-agentcore:InvokeGateway</code>.
             </p>
+            <p className="muted" style={{ marginTop: "1rem" }}>
+              <strong>No SSO / launching from Finder?</strong> Paste ephemeral keys instead —
+              they're stored in the Keychain and take precedence over a profile:
+            </p>
+            <CredentialsPanel names={AWS_CRED_NAMES} />
             <AwsCheck />
             <label style={{ marginTop: "1rem" }}>
               AgentCore Gateway URL (optional — enables Web Search discovery)

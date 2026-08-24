@@ -185,7 +185,10 @@ function mockSetCredential(name: string, set: boolean, hint: string | null): Cre
 
 export function setCredential(name: string, value: string): Promise<CredentialStatus> {
   if (apiConfig.mock) {
-    const hint = name === "crossref_mailto" ? value : `…${value.slice(-4)}`;
+    const hint =
+      name === "crossref_mailto" || name === "aws_access_key_id"
+        ? value
+        : `…${value.slice(-4)}`;
     return mockDelay(mockSetCredential(name, true, hint));
   }
   return put<CredentialStatus>(`/api/credentials/${name}`, { value });

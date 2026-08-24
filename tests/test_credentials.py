@@ -174,3 +174,59 @@ class TestAwsCheck:
             "account": "123456789012",
             "arn": "arn:aws:iam::123456789012:user/x",
         }
+
+
+# -- ephemeral AWS credentials (issue #23) -----------------------------------
+
+
+@pytest.fixture(autouse=False)
+def clean_aws_env(monkeypatch: pytest.MonkeyPatch):
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    applied = config._APPLIED_AWS_ENV
+    saved = set(applied)
+    applied.clear()
+    yield
+    applied.clear()
+    applied.update(saved)
+
+
+def test_set_aws_credential_mirrors_into_env(fake_keychain, clean_aws_env) -> None:
+    import os
+
+    config.set_credential("aws_access_key_id", "ASIAEXAMPLE123456789")
+    config.set_credential("aws_secret_access_key", "secret-value")
+    config.set_credential("aws_session_token", "token-value")
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "ASIAEXAMPLE123456789"
+    assert os.environ["AWS_SECRET_ACCESS_KEY"] == "secret-value"
+    assert os.environ["AWS_SESSION_TOKEN"] == "token-value"
+
+
+def test_delete_aws_credential_pops_env(fake_keychain, clean_aws_env) -> None:
+    import os
+
+    config.set_credential("aws_session_token", "token-value")
+    assert os.environ["AWS_SESSION_TOKEN"] == "token-value"
+    config.delete_credential("aws_session_token")
+    assert "AWS_SESSION_TOKEN" not in os.environ
+
+
+def test_shell_env_never_clobbered_or_popped(
+    fake_keychain, clean_aws_env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "shell-owned")
+    config.set_credential("aws_access_key_id", "keychain-value")
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "shell-owned"  # shell wins
+    config.delete_credential("aws_access_key_id")
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "shell-owned"  # never popped
+
+
+def test_aws_access_key_id_hint_unmasked(fake_keychain, clean_aws_env) -> None:
+    config.set_credential("aws_access_key_id", "ASIAEXAMPLE123456789")
+    status = config.credential_status("aws_access_key_id")
+    assert status["hint"] == "ASIAEXAMPLE123456789"
+    config.set_credential("aws_secret_access_key", "verysecretvalue")
+    masked = config.credential_status("aws_secret_access_key")
+    assert masked["hint"] == "…alue"

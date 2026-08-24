@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiConfig } from "../api";
-import { AwsCheck, CredentialsPanel } from "../credentials";
+import { AWS_CRED_NAMES, AwsCheck, CredentialsPanel, SCHOLARLY_CRED_NAMES } from "../credentials";
 import { EmbeddingModelPanel } from "../embedmodel";
 import { getSettings, saveSettings } from "../endpoints";
 import type { Settings as SettingsModel } from "../types";
@@ -111,7 +111,7 @@ export default function Settings() {
           Stored in the macOS Keychain (service <code>academic-noosphere</code>) — never in
           files or this repo. The core reads them at survey time.
         </p>
-        <CredentialsPanel />
+        <CredentialsPanel names={SCHOLARLY_CRED_NAMES} />
       </div>
 
       <div className="card form">
@@ -121,6 +121,11 @@ export default function Settings() {
           <code>AWS_PROFILE</code>) — nothing AWS-shaped is stored by the app. Session
           expired? Run <code>aws sso login --profile &lt;profile&gt;</code> and relaunch.
         </p>
+        <p className="muted">
+          Or paste ephemeral keys (SSO portal → “Command line or programmatic access”) —
+          Keychain-stored, they take precedence over a profile and expire with the session:
+        </p>
+        <CredentialsPanel names={AWS_CRED_NAMES} />
         <AwsCheck />
       </div>
 

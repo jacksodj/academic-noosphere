@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from noosphere import __version__
 from noosphere.api import AppState, router
+from noosphere import config
 from noosphere.config import Settings, data_dir, get_credential
 from noosphere.models import RunStatus
 from noosphere.pipeline.queue import Checkpoint
@@ -225,6 +226,9 @@ async def _supervised_worker(state: "AppState") -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ephemeral AWS credentials from the Keychain (issue #23) must be in the
+    # env before anything constructs a boto3/anthropic/SigV4 client.
+    config.sync_aws_env()
     state = AppState.build(data_dir(), Settings.load())
     app.state.noosphere = state
     worker = asyncio.create_task(_supervised_worker(state))

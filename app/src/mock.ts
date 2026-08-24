@@ -529,6 +529,27 @@ export const mockCredentials: CredentialStatus[] = [
     source: "env",
     hint: "you@example.com",
   },
+  {
+    name: "aws_access_key_id",
+    env_var: "AWS_ACCESS_KEY_ID",
+    set: false,
+    source: null,
+    hint: null,
+  },
+  {
+    name: "aws_secret_access_key",
+    env_var: "AWS_SECRET_ACCESS_KEY",
+    set: false,
+    source: null,
+    hint: null,
+  },
+  {
+    name: "aws_session_token",
+    env_var: "AWS_SESSION_TOKEN",
+    set: false,
+    source: null,
+    hint: null,
+  },
 ];
 
 /** GET /api/spend fixture — mutated by the mock SSE ticker in endpoints.ts. */

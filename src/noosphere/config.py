@@ -17,11 +17,54 @@ CRED_KEYS = {
     "s2_api_key": "NOOSPHERE_S2_KEY",
     "ncbi_api_key": "NOOSPHERE_NCBI_KEY",
     "crossref_mailto": "NOOSPHERE_CROSSREF_MAILTO",
+    # Ephemeral AWS credentials (issue #23): pasted from an SSO portal's
+    # "command line access" page. These map to the REAL AWS env names because
+    # boto3 / anthropic / SigV4 all read them ambiently — sync_aws_env()
+    # mirrors Keychain values into the process env.
+    "aws_access_key_id": "AWS_ACCESS_KEY_ID",
+    "aws_secret_access_key": "AWS_SECRET_ACCESS_KEY",
+    "aws_session_token": "AWS_SESSION_TOKEN",
 }
 
 # Names whose values are secrets (status hints are masked to the last 4 chars).
-# crossref_mailto is just an email for the polite pool — shown in full.
-CRED_SECRET = frozenset({"openalex_api_key", "s2_api_key", "ncbi_api_key"})
+# crossref_mailto is an email and aws_access_key_id is a public identifier
+# (AWS's own consoles display it) — both shown in full.
+CRED_SECRET = frozenset(
+    {"openalex_api_key", "s2_api_key", "ncbi_api_key", "aws_secret_access_key", "aws_session_token"}
+)
+
+AWS_CRED_NAMES = ("aws_access_key_id", "aws_secret_access_key", "aws_session_token")
+
+# AWS env vars this process itself populated from the Keychain — so a var the
+# launching shell exported is never clobbered or popped (shell wins, matching
+# the env-first rule every credential already follows).
+_APPLIED_AWS_ENV: set[str] = set()
+
+
+def sync_aws_env() -> None:
+    """Mirror Keychain AWS credentials into os.environ for ambient consumers.
+
+    Called at core startup and after every set/delete of an aws_* credential.
+    A GUI-launched app has no shell exports, so pasted ephemeral keys are the
+    only way credentials reach boto3/anthropic there.
+    """
+    for name in AWS_CRED_NAMES:
+        env = CRED_KEYS[name]
+        shell_owned = env in os.environ and env not in _APPLIED_AWS_ENV
+        if shell_owned:
+            continue
+        try:
+            import keyring
+
+            value = keyring.get_password(KEYCHAIN_SERVICE, name)
+        except Exception:
+            value = None
+        if value:
+            os.environ[env] = value
+            _APPLIED_AWS_ENV.add(env)
+        elif env in _APPLIED_AWS_ENV:
+            os.environ.pop(env, None)
+            _APPLIED_AWS_ENV.discard(env)
 
 
 def get_credential(name: str) -> str | None:
@@ -44,6 +87,8 @@ def set_credential(name: str, value: str) -> None:
     import keyring
 
     keyring.set_password(KEYCHAIN_SERVICE, name, value)
+    if name in AWS_CRED_NAMES:
+        sync_aws_env()
 
 
 def delete_credential(name: str) -> None:
@@ -57,6 +102,8 @@ def delete_credential(name: str) -> None:
         keyring.delete_password(KEYCHAIN_SERVICE, name)
     except keyring.errors.PasswordDeleteError:
         pass
+    if name in AWS_CRED_NAMES:
+        sync_aws_env()
 
 
 def credential_status(name: str) -> dict:
