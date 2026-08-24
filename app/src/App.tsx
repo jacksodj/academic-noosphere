@@ -59,13 +59,18 @@ export default function App() {
         })
         .catch(() => {
           if (cancelled) return;
-          if (n < 10) setTimeout(() => attempt(n + 1), 1000);
+          // The window now opens before the core finishes booting (frozen
+          // sidecar + DB open can take ~15s cold), so be patient.
+          if (n < 120) setTimeout(() => attempt(n + 1), 1000);
           else setSettingsFailed(true);
         });
     };
+    const onReady = () => attempt(0);
+    window.addEventListener("noosphere-ready", onReady);
     attempt(0);
     return () => {
       cancelled = true;
+      window.removeEventListener("noosphere-ready", onReady);
     };
   }, []);
 

@@ -53,6 +53,15 @@ function resolveConfig(): ApiConfig {
 
 export const apiConfig: ApiConfig = resolveConfig();
 
+// The shell now creates the window immediately and injects the handshake only
+// once the core is up (dispatching `noosphere-ready`), so a config resolved at
+// module load can be empty — re-resolve in place when the handshake lands.
+if (!apiConfig.baseUrl && !apiConfig.mock) {
+  window.addEventListener("noosphere-ready", () => {
+    Object.assign(apiConfig, resolveConfig());
+  });
+}
+
 export class ApiError extends Error {
   readonly status: number;
 

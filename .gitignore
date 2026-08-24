@@ -28,3 +28,7 @@ data/
 
 # Security-scan session tracking (local only)
 security-scan/
+
+# Frozen sidecar build output (ticket #22)
+app/src-tauri/sidecar/
+packaging/build/

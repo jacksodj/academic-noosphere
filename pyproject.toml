@@ -41,6 +41,11 @@ dev = [
     "pytest-asyncio>=0.23",
     "respx>=0.21",
 ]
+# Freezing the sidecar for the packaged .app (ticket #22). Build with:
+#   uv run --exact --no-dev --extra onnx --extra websearch --group pkg \
+#     pyinstaller packaging/noosphere-core.spec
+# (no --extra embed: torch must stay out of the frozen bundle)
+pkg = ["pyinstaller>=6.10"]
 
 [project.scripts]
 noosphere-core = "noosphere.server:main"

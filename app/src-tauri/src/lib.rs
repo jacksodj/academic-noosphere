@@ -95,21 +95,48 @@ fn find_uv() -> PathBuf {
     PathBuf::from("uv")
 }
 
+/// The PyInstaller-frozen sidecar shipped inside the bundle
+/// (Contents/Resources/sidecar/noosphere-core/noosphere-core), if present.
+/// NOOSPHERE_REPO forces the uv dev path even when a bundled core exists.
+fn bundled_core() -> Option<PathBuf> {
+    if std::env::var_os("NOOSPHERE_REPO").is_some() {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?;
+    let bin = exe
+        .parent()? // Contents/MacOS
+        .parent()? // Contents
+        .join("Resources/sidecar/noosphere-core/noosphere-core");
+    bin.is_file().then_some(bin)
+}
+
 fn spawn_core() -> (Child, Handshake) {
-    let root = repo_root();
-    let uv = find_uv();
-    let mut child = match Command::new(&uv)
-        .args(["run", "noosphere-core"])
-        .current_dir(&root)
+    let mut command = if let Some(bin) = bundled_core() {
+        // Self-contained mode: no uv, no repo checkout. cwd = $HOME so any
+        // relative writes land somewhere harmless.
+        let mut c = Command::new(bin);
+        if let Some(home) = std::env::var_os("HOME") {
+            c.current_dir(home);
+        }
+        c
+    } else {
+        let root = repo_root();
+        let uv = find_uv();
+        let mut c = Command::new(&uv);
+        c.args(["run", "noosphere-core"]).current_dir(&root);
+        c
+    };
+    let mut child = match command
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
     {
         Ok(child) => child,
         Err(e) => fatal(&format!(
-            "Failed to start the Python core via `{} run noosphere-core`: {e}.\n\n\
-             Install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh",
-            uv.display()
+            "Failed to start the Python core: {e}.\n\n\
+             Dev checkouts need uv (curl -LsSf https://astral.sh/uv/install.sh | sh); \
+             a downloaded app should have its core at Contents/Resources/sidecar — \
+             re-download if it is missing.",
         )),
     };
 
@@ -164,12 +191,13 @@ fn wait_for_api(port: u16) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let (child, handshake) = spawn_core();
-    wait_for_api(handshake.port);
-
+    // The window opens IMMEDIATELY (no Dock-bounce while the core boots — a
+    // frozen sidecar plus DB open can take ~15s cold); the core is spawned on
+    // a background thread which injects the handshake and fires
+    // `noosphere-ready` once the API is actually listening.
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(CoreProcess(Mutex::new(Some(child))))
+        .manage(CoreProcess(Mutex::new(None)))
         .setup(move |app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -178,29 +206,52 @@ pub fn run() {
                         .build(),
                 )?;
             }
-            // Besides the handshake, route external links to the system
-            // browser — WKWebView silently drops target=_blank otherwise.
-            let inject = format!(
-                concat!(
-                    "window.__NOOSPHERE__ = {{ port: {port}, token: {token} }};\n",
-                    "document.addEventListener('click', (e) => {{\n",
-                    "  const a = e.target.closest && e.target.closest('a[href]');\n",
-                    "  if (!a) return;\n",
-                    "  const url = a.href;\n",
-                    "  if (/^https?:/.test(url) && new URL(url).origin !== location.origin) {{\n",
-                    "    e.preventDefault();\n",
-                    "    window.__TAURI_INTERNALS__.invoke('plugin:opener|open_url', {{ url }});\n",
-                    "  }}\n",
-                    "}}, true);"
-                ),
-                port = handshake.port,
-                token = serde_json::to_string(&handshake.token).unwrap(),
+            // Route external links to the system browser — WKWebView silently
+            // drops target=_blank otherwise.
+            let inject = concat!(
+                "document.addEventListener('click', (e) => {\n",
+                "  const a = e.target.closest && e.target.closest('a[href]');\n",
+                "  if (!a) return;\n",
+                "  const url = a.href;\n",
+                "  if (/^https?:/.test(url) && new URL(url).origin !== location.origin) {\n",
+                "    e.preventDefault();\n",
+                "    window.__TAURI_INTERNALS__.invoke('plugin:opener|open_url', { url });\n",
+                "  }\n",
+                "}, true);"
             );
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Academic Noosphere")
                 .inner_size(1280.0, 800.0)
-                .initialization_script(&inject)
+                .initialization_script(inject)
                 .build()?;
+
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let (child, handshake) = spawn_core();
+                *handle.state::<CoreProcess>().0.lock().unwrap() = Some(child);
+                wait_for_api(handshake.port);
+                if let Some(window) = handle.get_webview_window("main") {
+                    let script = format!(
+                        "window.__NOOSPHERE__ = {{ port: {}, token: {} }};\n\
+                         window.dispatchEvent(new Event('noosphere-ready'));",
+                        handshake.port,
+                        serde_json::to_string(&handshake.token).unwrap(),
+                    );
+                    let _ = window.eval(&script);
+                }
+            });
+
+            // A SIGTERM'd shell must still run the Exit cleanup below —
+            // observed orphaning the core (which then holds the DB lock).
+            let term_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                use signal_hook::consts::{SIGINT, SIGTERM};
+                let mut signals = signal_hook::iterator::Signals::new([SIGTERM, SIGINT])
+                    .expect("signal handler");
+                if signals.forever().next().is_some() {
+                    term_handle.exit(0);
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())
