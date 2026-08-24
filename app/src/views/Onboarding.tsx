@@ -7,10 +7,11 @@
 
 import { useState } from "react";
 import { AwsCheck, CredentialsPanel } from "../credentials";
+import { EmbeddingModelPanel } from "../embedmodel";
 import { saveSettings } from "../endpoints";
 import type { CredentialStatus, Settings } from "../types";
 
-const STEPS = ["Welcome", "Scholarly APIs", "AWS", "Done"] as const;
+const STEPS = ["Welcome", "Scholarly APIs", "AWS", "Embedding model", "Done"] as const;
 
 export default function Onboarding({
   settings,
@@ -133,6 +134,17 @@ export default function Onboarding({
         )}
 
         {step === 3 && (
+          <>
+            <h1>Embedding model</h1>
+            <p className="muted">
+              Surveys score relevance with SPECTER2, a scientific-paper embedding model. It
+              downloads once (~420 MB) and runs entirely on this Mac.
+            </p>
+            <EmbeddingModelPanel />
+          </>
+        )}
+
+        {step === 4 && (
           <>
             <h1>Ready</h1>
             <p>

@@ -68,7 +68,14 @@ def test_specter2_embed_raises_without_dependency() -> None:
 @pytest.mark.skipif(_HAS_ST, reason="sentence-transformers installed")
 def test_default_embedder_falls_back_to_stub_with_warning(
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
+    # Isolate from any real ONNX artifact on this machine — this test is about
+    # the last-resort tier of the chain (no ONNX, no sentence-transformers).
+    monkeypatch.setattr(
+        "noosphere.pipeline.embed.onnx_model_dir", lambda: tmp_path / "absent"
+    )
     with caplog.at_level(logging.WARNING, logger="noosphere.pipeline.embed"):
         embedder = default_embedder()
     assert isinstance(embedder, StubEmbedder)

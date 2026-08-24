@@ -19,6 +19,7 @@ import {
 } from "./mock";
 import type {
   AwsCheckResult,
+  EmbeddingModelStatus,
   CorpusInsights,
   WorksPage,
   CredentialStatus,
@@ -193,6 +194,24 @@ export function setCredential(name: string, value: string): Promise<CredentialSt
 export function clearCredential(name: string): Promise<CredentialStatus> {
   if (apiConfig.mock) return mockDelay(mockSetCredential(name, false, null));
   return del<CredentialStatus>(`/api/credentials/${name}`);
+}
+
+const mockEmbeddingModel = {
+  present: true,
+  embedder: "onnx" as const,
+  hf_repo: "jacksodj/specter2-base-onnx",
+  dir: "~/Library/Application Support/academic-noosphere/models/specter2-onnx",
+  download: { status: "idle" as const, done_bytes: 0, total_bytes: 0, error: null },
+};
+
+export function getEmbeddingModel(): Promise<EmbeddingModelStatus> {
+  if (apiConfig.mock) return mockDelay({ ...mockEmbeddingModel });
+  return get<EmbeddingModelStatus>("/api/models/embedding");
+}
+
+export function startEmbeddingModelDownload(): Promise<EmbeddingModelStatus> {
+  if (apiConfig.mock) return mockDelay({ ...mockEmbeddingModel });
+  return post<EmbeddingModelStatus>("/api/models/embedding/download", {});
 }
 
 export function checkAws(): Promise<AwsCheckResult> {

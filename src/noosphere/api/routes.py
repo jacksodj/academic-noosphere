@@ -248,6 +248,48 @@ async def remove_credential(name: str) -> dict[str, Any]:
     return config.credential_status(name)
 
 
+# -- embedding model (first-run download, ticket #22) ------------------------
+
+
+def _embedding_status() -> dict[str, Any]:
+    from noosphere.pipeline.embed import OnnxSpecter2Embedder, onnx_model_dir
+    from noosphere.pipeline.model_fetch import HF_REPO, fetcher
+
+    present = OnnxSpecter2Embedder.available()
+    if present:
+        kind = "onnx"
+    else:
+        try:
+            import sentence_transformers  # noqa: F401
+
+            kind = "sentence-transformers"
+        except ImportError:
+            kind = "stub"
+    return {
+        "present": present,
+        "embedder": kind,
+        "hf_repo": HF_REPO,
+        "dir": str(onnx_model_dir()),
+        "download": fetcher.snapshot(),
+    }
+
+
+@router.get("/models/embedding")
+async def embedding_model_status() -> dict[str, Any]:
+    """Whether real (non-stub) embeddings are available, and download state."""
+    return _embedding_status()
+
+
+@router.post("/models/embedding/download", status_code=202)
+async def embedding_model_download() -> dict[str, Any]:
+    from noosphere.pipeline.embed import OnnxSpecter2Embedder, onnx_model_dir
+    from noosphere.pipeline.model_fetch import fetcher
+
+    if not OnnxSpecter2Embedder.available():
+        fetcher.start(onnx_model_dir())
+    return _embedding_status()
+
+
 @router.post("/aws/check")
 async def aws_check(request: Request) -> dict[str, Any]:
     """STS identity check so onboarding/settings can confirm AWS access.

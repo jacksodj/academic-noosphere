@@ -259,3 +259,17 @@ export interface ZoomResponse {
   run: Run;
   candidate: WhitespaceCandidate;
 }
+
+/** GET /api/models/embedding — SPECTER2 availability + download progress. */
+export interface EmbeddingModelStatus {
+  present: boolean;
+  embedder: "onnx" | "sentence-transformers" | "stub";
+  hf_repo: string;
+  dir: string;
+  download: {
+    status: "idle" | "downloading" | "done" | "failed";
+    done_bytes: number;
+    total_bytes: number;
+    error: string | null;
+  };
+}

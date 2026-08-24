@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiConfig } from "../api";
 import { AwsCheck, CredentialsPanel } from "../credentials";
+import { EmbeddingModelPanel } from "../embedmodel";
 import { getSettings, saveSettings } from "../endpoints";
 import type { Settings as SettingsModel } from "../types";
 
@@ -121,6 +122,11 @@ export default function Settings() {
           expired? Run <code>aws sso login --profile &lt;profile&gt;</code> and relaunch.
         </p>
         <AwsCheck />
+      </div>
+
+      <div className="card form">
+        <h2>Embedding model</h2>
+        <EmbeddingModelPanel />
       </div>
     </section>
   );
