@@ -28,7 +28,18 @@ from noosphere.pipeline.queue import Checkpoint
 
 _token: str = ""
 
-VENDOR_IDEONOMY = Path(__file__).resolve().parents[2] / "vendor" / "ideonomy"
+def _vendor_ideonomy() -> Path:
+    """The vendored ideonomy catalog: bundled data in the frozen app
+    (PyInstaller extracts datas under sys._MEIPASS — issue #26), the repo's
+    vendor/ tree in a dev checkout."""
+    import sys
+
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "vendor" / "ideonomy"
+    return Path(__file__).resolve().parents[2] / "vendor" / "ideonomy"
+
+
+VENDOR_IDEONOMY = _vendor_ideonomy()
 
 
 def _build_handlers(state: AppState) -> dict:

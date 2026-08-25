@@ -10,6 +10,9 @@
 from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = [], [], []
+# The vendored ideonomy catalog (repo-root data, not a Python package) —
+# server._vendor_ideonomy() finds it under sys._MEIPASS when frozen (#26).
+datas += [("../vendor/ideonomy", "vendor/ideonomy")]
 # Native-extension packages whose libs/data PyInstaller's static scan misses.
 for pkg in ("ladybug", "igraph", "onnxruntime", "tokenizers", "duckdb"):
     d, b, h = collect_all(pkg)

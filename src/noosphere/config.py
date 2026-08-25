@@ -132,6 +132,11 @@ def credential_status(name: str) -> dict:
     """
     env = CRED_KEYS[name]
     env_value = os.environ.get(env)
+    # AWS env vars WE mirrored from the Keychain must not report as
+    # env-owned: the UI hides the paste/replace controls for env-owned rows
+    # (issue #27) — "env" means the launching shell owns it, nothing else.
+    if env_value and name in AWS_CRED_NAMES and env in _APPLIED_AWS_ENV:
+        env_value = None
     keychain_value = None
     if not env_value:
         try:

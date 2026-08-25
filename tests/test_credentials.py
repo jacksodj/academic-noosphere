@@ -279,3 +279,27 @@ def test_bedrock_api_key_never_clobbers_shell_export(
     monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "from-shell")
     config.set_credential("bedrock_api_key", "from-keychain")
     assert os.environ["AWS_BEARER_TOKEN_BEDROCK"] == "from-shell"
+
+
+def test_mirrored_aws_env_still_reports_keychain_source(
+    fake_keychain, clean_aws_env
+) -> None:
+    """Issue #27: our own env mirror must not make the UI hide the paste box."""
+    import os
+
+    config.set_credential("aws_session_token", "ephemeral-token-abcd")
+    assert os.environ["AWS_SESSION_TOKEN"] == "ephemeral-token-abcd"  # mirrored
+    status = config.credential_status("aws_session_token")
+    assert status["source"] == "keychain"  # NOT "env" — replace/clear stay visible
+    assert status["hint"] == "…abcd"
+
+
+def test_shell_exported_aws_env_still_reports_env_source(
+    fake_keychain, clean_aws_env, monkeypatch
+) -> None:
+    import os
+
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "from-shell")
+    config.sync_aws_env()
+    assert os.environ["AWS_SESSION_TOKEN"] == "from-shell"
+    assert config.credential_status("aws_session_token")["source"] == "env"
