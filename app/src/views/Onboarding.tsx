@@ -7,11 +7,19 @@
 
 import { useState } from "react";
 import { AWS_CRED_NAMES, AwsCheck, CredentialsPanel, SCHOLARLY_CRED_NAMES } from "../credentials";
+import { BedrockCatalogPanel, GatewayPanel } from "../awssetup";
 import { EmbeddingModelPanel } from "../embedmodel";
 import { saveSettings } from "../endpoints";
 import type { CredentialStatus, Settings } from "../types";
 
-const STEPS = ["Welcome", "Scholarly APIs", "AWS", "Embedding model", "Done"] as const;
+const STEPS = [
+  "Welcome",
+  "Scholarly APIs",
+  "AWS",
+  "Bedrock & Web Search",
+  "Embedding model",
+  "Done",
+] as const;
 
 export default function Onboarding({
   settings,
@@ -123,22 +131,23 @@ export default function Onboarding({
             </p>
             <CredentialsPanel names={AWS_CRED_NAMES} />
             <AwsCheck />
-            <label style={{ marginTop: "1rem" }}>
-              AgentCore Gateway URL (optional — enables Web Search discovery)
-              <input
-                value={gatewayUrl}
-                onChange={(e) => setGatewayUrl(e.target.value)}
-                placeholder="https://…gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
-              />
-            </label>
-            <p className="muted">
-              No Gateway yet? <code>uv run scripts/phase0_infra.py up</code> creates one and
-              prints this URL (see docs/getting-started.md §3.2).
-            </p>
           </>
         )}
 
         {step === 3 && (
+          <>
+            <h1>Bedrock & Web Search</h1>
+            <p className="muted">
+              With credentials verified, two things ride on them: access to the two Claude
+              models (granted in the Bedrock console's model catalog) and, optionally, an
+              AgentCore Gateway for Web Search discovery.
+            </p>
+            <BedrockCatalogPanel />
+            <GatewayPanel value={gatewayUrl} onChange={setGatewayUrl} />
+          </>
+        )}
+
+        {step === 4 && (
           <>
             <h1>Embedding model</h1>
             <p className="muted">
@@ -149,7 +158,7 @@ export default function Onboarding({
           </>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <>
             <h1>Ready</h1>
             <p>

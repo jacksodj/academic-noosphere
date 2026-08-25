@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiConfig } from "../api";
 import { AWS_CRED_NAMES, AwsCheck, CredentialsPanel, SCHOLARLY_CRED_NAMES } from "../credentials";
+import { BedrockCatalogPanel, GatewayPanel } from "../awssetup";
 import { EmbeddingModelPanel } from "../embedmodel";
 import { getSettings, saveSettings } from "../endpoints";
 import type { Settings as SettingsModel } from "../types";
@@ -56,14 +57,10 @@ export default function Settings() {
 
       {settings && (
         <form className="card form" onSubmit={submit}>
-          <label>
-            AgentCore Gateway URL
-            <input
-              value={settings.gateway_url ?? ""}
-              onChange={(e) => update({ gateway_url: e.target.value || null })}
-              placeholder="https://…gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
-            />
-          </label>
+          <GatewayPanel
+            value={settings.gateway_url ?? ""}
+            onChange={(url) => update({ gateway_url: url || null })}
+          />
           <label>
             AWS region
             <input
@@ -127,6 +124,8 @@ export default function Settings() {
         </p>
         <CredentialsPanel names={AWS_CRED_NAMES} />
         <AwsCheck />
+        <h2 style={{ marginTop: "1.25rem" }}>Bedrock model access</h2>
+        <BedrockCatalogPanel />
       </div>
 
       <div className="card form">

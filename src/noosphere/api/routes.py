@@ -248,6 +248,50 @@ async def remove_credential(name: str) -> dict[str, Any]:
     return config.credential_status(name)
 
 
+# -- Bedrock catalog + Web Search Gateway setup (issue #28) ------------------
+
+
+@router.get("/aws/bedrock/catalog")
+async def bedrock_catalog(request: Request) -> dict[str, Any]:
+    """Whether the two configured models are actually usable in this account."""
+    from noosphere.aws_setup import model_catalog_status
+
+    settings = _state(request).settings
+    models = {"opus": settings.opus_model, "haiku": settings.haiku_model}
+    try:
+        return await asyncio.to_thread(model_catalog_status, settings.aws_region, models)
+    except Exception as exc:
+        raise HTTPException(502, f"catalog check failed: {exc}") from exc
+
+
+@router.get("/aws/websearch")
+async def websearch_status(request: Request) -> dict[str, Any]:
+    """Existing gateways + the in-flight create, for the setup panel."""
+    from noosphere.aws_setup import creator, list_websearch_gateways
+
+    settings = _state(request).settings
+    out: dict[str, Any] = {
+        "configured_url": settings.gateway_url,
+        "create": creator.snapshot(),
+    }
+    try:
+        out["gateways"] = await asyncio.to_thread(
+            list_websearch_gateways, settings.aws_region
+        )
+    except Exception as exc:
+        out["gateways"] = []
+        out["error"] = str(exc)
+    return out
+
+
+@router.post("/aws/websearch/create", status_code=202)
+async def websearch_create(request: Request) -> dict[str, Any]:
+    from noosphere.aws_setup import creator
+
+    creator.start(_state(request).settings.aws_region)
+    return creator.snapshot()
+
+
 # -- embedding model (first-run download, ticket #22) ------------------------
 
 

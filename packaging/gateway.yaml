@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Academic Noosphere Web Search Gateway (issue #28): AgentCore Gateway (MCP,
+  IAM inbound auth) and its service role (InvokeWebSearch on the AWS-owned
+  tool). Created in-app from onboarding/Settings; the web-search connector
+  TARGET is attached via the control-plane API after stack create because the
+  CFN ConnectorSource schema has no Version property and the 1.2.0 pin is
+  load-bearing. Derived from infra/phase0-spike.yaml minus the spike Lambda.
+
+Parameters:
+  GatewayName:
+    Type: String
+    Default: noosphere-websearch
+
+Resources:
+  GatewayServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${GatewayName}-gateway-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: invoke-web-search
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeWebSearch
+                Effect: Allow
+                Action: bedrock-agentcore:InvokeWebSearch
+                Resource: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:aws:tool/web-search.v1"
+
+  Gateway:
+    Type: AWS::BedrockAgentCore::Gateway
+    Properties:
+      Name: !Ref GatewayName
+      ProtocolType: MCP
+      AuthorizerType: AWS_IAM
+      RoleArn: !GetAtt GatewayServiceRole.Arn
+
+Outputs:
+  GatewayId:
+    Value: !GetAtt Gateway.GatewayIdentifier
+  GatewayUrl:
+    Value: !GetAtt Gateway.GatewayUrl

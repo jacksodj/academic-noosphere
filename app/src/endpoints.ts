@@ -19,7 +19,9 @@ import {
 } from "./mock";
 import type {
   AwsCheckResult,
+  BedrockCatalog,
   EmbeddingModelStatus,
+  WebSearchStatus,
   CorpusInsights,
   WorksPage,
   CredentialStatus,
@@ -215,6 +217,39 @@ export function getEmbeddingModel(): Promise<EmbeddingModelStatus> {
 export function startEmbeddingModelDownload(): Promise<EmbeddingModelStatus> {
   if (apiConfig.mock) return mockDelay({ ...mockEmbeddingModel });
   return post<EmbeddingModelStatus>("/api/models/embedding/download", {});
+}
+
+export function getBedrockCatalog(): Promise<BedrockCatalog> {
+  if (apiConfig.mock) {
+    return mockDelay({
+      region: "us-east-1",
+      models: [
+        { role: "opus", model_id: "us.anthropic.claude-opus-4-6-v1", listed: true, authorized: true },
+        { role: "haiku", model_id: "us.anthropic.claude-haiku-4-5-20251001-v1:0", listed: true, authorized: true },
+      ],
+      console_url: "https://us-east-1.console.aws.amazon.com/bedrock/home#/modelaccess",
+    });
+  }
+  return get<BedrockCatalog>("/api/aws/bedrock/catalog");
+}
+
+const mockWebSearch: WebSearchStatus = {
+  configured_url: null,
+  gateways: [
+    { id: "gw-1", name: "noosphere-websearch", status: "READY", url: "https://example-gateway.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp", web_search: true },
+  ],
+  create: { status: "idle", step: "", gateway_url: null, error: null },
+};
+
+export function getWebSearch(): Promise<WebSearchStatus> {
+  if (apiConfig.mock) return mockDelay({ ...mockWebSearch });
+  return get<WebSearchStatus>("/api/aws/websearch");
+}
+
+export function createWebSearchGateway(): Promise<WebSearchStatus["create"]> {
+  if (apiConfig.mock)
+    return mockDelay({ status: "creating" as const, step: "starting", gateway_url: null, error: null });
+  return post<WebSearchStatus["create"]>("/api/aws/websearch/create", {});
 }
 
 export function checkAws(): Promise<AwsCheckResult> {

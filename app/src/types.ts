@@ -277,3 +277,18 @@ export interface EmbeddingModelStatus {
     error: string | null;
   };
 }
+
+/** GET /api/aws/bedrock/catalog — are the configured models usable here? */
+export interface BedrockCatalog {
+  region: string;
+  models: { role: string; model_id: string; listed: boolean; authorized: boolean | null }[];
+  console_url: string;
+}
+
+/** GET /api/aws/websearch — existing gateways + in-flight creation. */
+export interface WebSearchStatus {
+  configured_url: string | null;
+  gateways: { id: string; name: string | null; status: string | null; url: string | null; web_search: boolean }[];
+  error?: string;
+  create: { status: "idle" | "creating" | "done" | "failed"; step: string; gateway_url: string | null; error: string | null };
+}
