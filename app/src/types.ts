@@ -134,6 +134,10 @@ export interface AwsCheckResult {
   account?: string;
   arn?: string;
   error?: string;
+  /** SigV4 identity probe (STS) — what Web Search + profile auth use. */
+  sigv4?: { ok: boolean; account?: string; arn?: string; error?: string };
+  /** Bedrock reachability probe — what synthesis actually needs. */
+  bedrock?: { ok: boolean; auth: "bearer" | "sigv4"; models?: number; error?: string };
 }
 
 /**

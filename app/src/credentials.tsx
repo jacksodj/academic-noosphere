@@ -34,6 +34,7 @@ export const AWS_CRED_NAMES = [
   "aws_access_key_id",
   "aws_secret_access_key",
   "aws_session_token",
+  "bedrock_api_key",
 ];
 
 export const CREDENTIAL_META: CredentialMeta[] = [
@@ -109,6 +110,17 @@ export const CREDENTIAL_META: CredentialMeta[] = [
       "Third value. Ephemeral — typically expires after 1–12 h; when “Test AWS access” starts failing, paste a fresh set. Pasted keys take precedence over an ambient profile.",
     link: null,
     linkLabel: null,
+  },
+  {
+    name: "bedrock_api_key",
+    label: "Bedrock API key (long-lived)",
+    required: false,
+    secret: true,
+    placeholder: "paste Bedrock API key (optional)",
+    howTo:
+      "No-expiry alternative for model calls: covers gap synthesis and ideonomy without the refresh dance. Web Search (Gateway) and the identity test still need the three values above or a profile. Generate under Bedrock console → API keys.",
+    link: "https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html",
+    linkLabel: "how API keys work",
   },
 ];
 
@@ -285,17 +297,48 @@ export function AwsCheck() {
       <button type="button" disabled={busy} onClick={() => void run()}>
         {busy ? "Checking…" : "Test AWS access"}
       </button>
-      {result &&
-        (result.ok ? (
-          <span className="cred-badge cred-set">
-            OK — account {result.account}
-            {result.profile ? ` (profile ${result.profile})` : ""}
-          </span>
-        ) : (
-          <span className="cred-badge cred-unset" title={result.error}>
-            not connected{result.error ? ` — ${result.error.slice(0, 120)}` : ""}
-          </span>
-        ))}
+      {result && (
+        <div className="aws-check-rows">
+          <div>
+            <span className="muted small">Identity (SigV4) </span>
+            {(result.sigv4 ?? result).ok ? (
+              <span className="cred-badge cred-set">
+                OK — account {result.account}
+                {result.profile ? ` (profile ${result.profile})` : ""}
+              </span>
+            ) : (
+              <span className="cred-badge cred-unset" title={result.sigv4?.error ?? result.error}>
+                {isExpiredError(result.sigv4?.error ?? result.error)
+                  ? "session expired — paste a fresh key set above and re-test"
+                  : `not connected${result.error ? ` — ${result.error.slice(0, 120)}` : ""}`}
+              </span>
+            )}
+          </div>
+          {result.bedrock && (
+            <div>
+              <span className="muted small">Bedrock </span>
+              {result.bedrock.ok ? (
+                <span className="cred-badge cred-set">
+                  OK — {result.bedrock.models} models via{" "}
+                  {result.bedrock.auth === "bearer" ? "API key" : "SigV4"}
+                </span>
+              ) : (
+                <span className="cred-badge cred-unset" title={result.bedrock.error}>
+                  unreachable{result.bedrock.error ? ` — ${result.bedrock.error.slice(0, 100)}` : ""}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** AWS's expired/invalid ephemeral-credential error signatures. */
+export function isExpiredError(error: string | undefined | null): boolean {
+  if (!error) return false;
+  return /ExpiredToken|InvalidClientTokenId|UnrecognizedClient|security token.*(invalid|expired)/i.test(
+    error,
   );
 }

@@ -24,16 +24,34 @@ CRED_KEYS = {
     "aws_access_key_id": "AWS_ACCESS_KEY_ID",
     "aws_secret_access_key": "AWS_SECRET_ACCESS_KEY",
     "aws_session_token": "AWS_SESSION_TOKEN",
+    # Long-lived Bedrock API key (issue #24): bearer auth for Bedrock only.
+    # Both anthropic.AnthropicBedrock and botocore (>=1.39) read this env var
+    # natively and switch to Authorization: Bearer for bedrock endpoints —
+    # no expiry dance, but it covers model calls only (STS and the SigV4
+    # Web Search Gateway still need the three SigV4 values or a profile).
+    "bedrock_api_key": "AWS_BEARER_TOKEN_BEDROCK",
 }
 
 # Names whose values are secrets (status hints are masked to the last 4 chars).
 # crossref_mailto is an email and aws_access_key_id is a public identifier
 # (AWS's own consoles display it) — both shown in full.
 CRED_SECRET = frozenset(
-    {"openalex_api_key", "s2_api_key", "ncbi_api_key", "aws_secret_access_key", "aws_session_token"}
+    {
+        "openalex_api_key",
+        "s2_api_key",
+        "ncbi_api_key",
+        "aws_secret_access_key",
+        "aws_session_token",
+        "bedrock_api_key",
+    }
 )
 
-AWS_CRED_NAMES = ("aws_access_key_id", "aws_secret_access_key", "aws_session_token")
+AWS_CRED_NAMES = (
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_session_token",
+    "bedrock_api_key",
+)
 
 # AWS env vars this process itself populated from the Keychain — so a var the
 # launching shell exported is never clobbered or popped (shell wins, matching

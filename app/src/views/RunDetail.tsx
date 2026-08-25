@@ -160,7 +160,22 @@ export default function RunDetail() {
           <span className="badge status-running">{stageProgressLabel(stageTick)}</span>
         </p>
       )}
-      {progress?.error && <p className="error">{progress.error}</p>}
+      {progress?.error && (
+        <p className="error">
+          {progress.error}
+          {/^.*(ExpiredToken|InvalidClientTokenId|UnrecognizedClient|security token|AccessDenied|credential)/i.test(
+            progress.error,
+          ) && (
+            <>
+              {" "}
+              <Link to="/settings" className="plain-link">
+                Fix AWS credentials in Settings →
+              </Link>{" "}
+              then hit Retry on the Dashboard.
+            </>
+          )}
+        </p>
+      )}
 
       <div
         className="activity-feed card"

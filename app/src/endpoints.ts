@@ -224,6 +224,12 @@ export function checkAws(): Promise<AwsCheckResult> {
       profile: "research",
       account: "123456789012",
       arn: "arn:aws:sts::123456789012:assumed-role/research/you",
+      sigv4: {
+        ok: true,
+        account: "123456789012",
+        arn: "arn:aws:sts::123456789012:assumed-role/research/you",
+      },
+      bedrock: { ok: true, auth: "sigv4" as const, models: 42 },
     });
   }
   return post<AwsCheckResult>("/api/aws/check", {});

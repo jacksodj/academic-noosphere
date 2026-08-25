@@ -292,35 +292,59 @@ async def embedding_model_download() -> dict[str, Any]:
 
 @router.post("/aws/check")
 async def aws_check(request: Request) -> dict[str, Any]:
-    """STS identity check so onboarding/settings can confirm AWS access.
+    """Two-probe AWS check for onboarding/settings (issues #23/#24/#25).
 
-    Runs in a thread (boto3 is blocking); short timeouts so a missing network
-    answers in seconds, not minutes.
+    - sigv4: STS get-caller-identity — the identity that Web Search (SigV4
+      Gateway) and profile-based Bedrock use. Fails when ephemeral keys expire.
+    - bedrock: bedrock list-foundation-models — the call path synthesis
+      actually needs; succeeds via a long-lived Bedrock API key (bearer) even
+      when SigV4 is expired/absent, since botocore honors
+      AWS_BEARER_TOKEN_BEDROCK for bedrock endpoints.
+
+    Top-level ok/account/arn keep the legacy (SigV4) meaning. Runs in threads
+    (boto3 is blocking) with short timeouts.
     """
     import os
 
     region = _state(request).settings.aws_region
 
-    def _check() -> dict[str, Any]:
-        import boto3
+    def _boto_config():
         from botocore.config import Config as BotoConfig
 
-        sts = boto3.client(
-            "sts",
-            region_name=region,
-            config=BotoConfig(
-                connect_timeout=5, read_timeout=10, retries={"max_attempts": 1}
-            ),
-        )
-        ident = sts.get_caller_identity()
+        return BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 1})
+
+    def _sts() -> dict[str, Any]:
+        import boto3
+
+        ident = boto3.client("sts", region_name=region, config=_boto_config()).get_caller_identity()
         return {"account": ident["Account"], "arn": ident["Arn"]}
 
+    def _bedrock() -> dict[str, Any]:
+        import boto3
+
+        models = boto3.client("bedrock", region_name=region, config=_boto_config()).list_foundation_models()
+        return {"models": len(models.get("modelSummaries", []))}
+
     profile = os.environ.get("AWS_PROFILE")
+    bearer = bool(os.environ.get("AWS_BEARER_TOKEN_BEDROCK"))
+    out: dict[str, Any] = {"profile": profile}
     try:
-        ident = await asyncio.to_thread(_check)
+        ident = await asyncio.to_thread(_sts)
+        out.update(ok=True, **ident)
+        out["sigv4"] = {"ok": True, **ident}
     except Exception as exc:
-        return {"ok": False, "profile": profile, "error": str(exc)}
-    return {"ok": True, "profile": profile, **ident}
+        out.update(ok=False, error=str(exc))
+        out["sigv4"] = {"ok": False, "error": str(exc)}
+    try:
+        bd = await asyncio.to_thread(_bedrock)
+        out["bedrock"] = {"ok": True, "auth": "bearer" if bearer else "sigv4", **bd}
+    except Exception as exc:
+        out["bedrock"] = {
+            "ok": False,
+            "auth": "bearer" if bearer else "sigv4",
+            "error": str(exc),
+        }
+    return out
 
 
 # -- whitespace & zoom -------------------------------------------------------

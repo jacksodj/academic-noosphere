@@ -148,6 +148,7 @@ class TestAwsCheck:
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
+            "AWS_BEARER_TOKEN_BEDROCK",
         ):
             monkeypatch.delenv(env, raising=False)
         monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
@@ -163,17 +164,38 @@ class TestAwsCheck:
         import noosphere.api.routes as routes_mod
 
         async def fake_to_thread(fn, *a, **kw):
-            return {"account": "123456789012", "arn": "arn:aws:iam::123456789012:user/x"}
+            if fn.__name__ == "_sts":
+                return {"account": "123456789012", "arn": "arn:aws:iam::123456789012:user/x"}
+            return {"models": 5}
 
         monkeypatch.setattr(routes_mod.asyncio, "to_thread", fake_to_thread)
         monkeypatch.setenv("AWS_PROFILE", "research")
+        monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
         body = client.post("/api/aws/check").json()
-        assert body == {
-            "ok": True,
-            "profile": "research",
-            "account": "123456789012",
-            "arn": "arn:aws:iam::123456789012:user/x",
-        }
+        assert body["ok"] is True
+        assert body["account"] == "123456789012"
+        assert body["arn"] == "arn:aws:iam::123456789012:user/x"
+        assert body["profile"] == "research"
+        assert body["sigv4"]["ok"] is True
+        assert body["bedrock"] == {"ok": True, "auth": "sigv4", "models": 5}
+
+    def test_bedrock_probe_reports_bearer_auth(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import noosphere.api.routes as routes_mod
+
+        async def fake_to_thread(fn, *a, **kw):
+            if fn.__name__ == "_sts":
+                raise RuntimeError("ExpiredToken: The security token included is expired")
+            return {"models": 3}
+
+        monkeypatch.setattr(routes_mod.asyncio, "to_thread", fake_to_thread)
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bedrock-api-key-value")
+        body = client.post("/api/aws/check").json()
+        # Expired SigV4 no longer means Bedrock is down: the bearer path holds.
+        assert body["ok"] is False
+        assert "ExpiredToken" in body["sigv4"]["error"]
+        assert body["bedrock"] == {"ok": True, "auth": "bearer", "models": 3}
 
 
 # -- ephemeral AWS credentials (issue #23) -----------------------------------
@@ -181,7 +203,12 @@ class TestAwsCheck:
 
 @pytest.fixture(autouse=False)
 def clean_aws_env(monkeypatch: pytest.MonkeyPatch):
-    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+    for var in (
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_BEARER_TOKEN_BEDROCK",
+    ):
         monkeypatch.delenv(var, raising=False)
     applied = config._APPLIED_AWS_ENV
     saved = set(applied)
@@ -230,3 +257,25 @@ def test_aws_access_key_id_hint_unmasked(fake_keychain, clean_aws_env) -> None:
     config.set_credential("aws_secret_access_key", "verysecretvalue")
     masked = config.credential_status("aws_secret_access_key")
     assert masked["hint"] == "…alue"
+
+
+def test_bedrock_api_key_mirrors_and_pops(fake_keychain, clean_aws_env) -> None:
+    import os
+
+    config.set_credential("bedrock_api_key", "bedrock-long-lived-key")
+    assert os.environ["AWS_BEARER_TOKEN_BEDROCK"] == "bedrock-long-lived-key"
+    status = config.credential_status("bedrock_api_key")
+    assert status["set"] is True
+    assert status["hint"] == "…-key"  # masked: secret shows last 4 chars only
+    config.delete_credential("bedrock_api_key")
+    assert "AWS_BEARER_TOKEN_BEDROCK" not in os.environ
+
+
+def test_bedrock_api_key_never_clobbers_shell_export(
+    fake_keychain, clean_aws_env, monkeypatch
+) -> None:
+    import os
+
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "from-shell")
+    config.set_credential("bedrock_api_key", "from-keychain")
+    assert os.environ["AWS_BEARER_TOKEN_BEDROCK"] == "from-shell"
