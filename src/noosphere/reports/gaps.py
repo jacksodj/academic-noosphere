@@ -147,9 +147,15 @@ def _communities_block(run_id: str, sidecar: Any, graph: Any) -> tuple[dict, lis
         return {}, [], []
 
 
-def _fill_works_index(index: dict[str, dict], gap_dicts: list[dict], graph: Any) -> dict:
-    """Resolve every cited work id (evidence, ideas, community members) to
-    {work_id, title, year, doi} for the SPA's citation-chip hover cards."""
+def _fill_works_index(
+    index: dict[str, dict],
+    gap_dicts: list[dict],
+    graph: Any,
+    candidate_dicts: list[dict] = (),
+) -> dict:
+    """Resolve every cited work id (evidence, ideas, community members, and
+    examined-candidate evidence — issue #32) to {work_id, title, year, doi}
+    for the SPA's citation-chip hover cards."""
     for body in gap_dicts:
         for ev in body.get("evidence", []):
             if ev.get("work_id"):
@@ -158,6 +164,10 @@ def _fill_works_index(index: dict[str, dict], gap_dicts: list[dict], graph: Any)
             for idea in exp.get("ideas", []):
                 if idea.get("nearest_work_id"):
                     index.setdefault(idea["nearest_work_id"], {})
+    for cand in candidate_dicts:
+        for ev in cand.get("evidence", []):
+            if ev.get("work_id"):
+                index.setdefault(ev["work_id"], {})
     resolved: dict[str, dict] = {}
     for wid in index:
         work = graph.get_work(wid)
@@ -191,15 +201,14 @@ def assemble_report(run_id: str, sidecar: Any, graph: Any, weights: dict) -> dic
     candidates = sidecar.list_whitespace(coarse_run_id) if coarse_run_id else []
     # Full WhitespaceCandidate shape — the SPA renders these with the same
     # components as live candidates (evidence chips etc.).
-    examined = [
-        w.model_dump(mode="json") for w in candidates if w.status == "not_confirmed"
-    ]
+    candidate_dicts = [w.model_dump(mode="json") for w in candidates]
+    examined = [c for c in candidate_dicts if c.get("status") == "not_confirmed"]
 
     works_index, communities, community_edges = _communities_block(run_id, sidecar, graph)
 
     return {
         "field": run.field_name,
-        "works": _fill_works_index(works_index, gap_dicts, graph),
+        "works": _fill_works_index(works_index, gap_dicts, graph, candidate_dicts),
         "communities": communities,
         "community_edges": community_edges,
         "run": {

@@ -202,12 +202,10 @@ class SurveyService:
             self._note(f"Run failed: {type(exc).__name__}: {exc}")
             self._sidecar.update_run(run.run_id, status=RunStatus.FAILED)
             raise
-        self._note("Survey completed")
-        self._sidecar.update_run(
-            run.run_id,
-            status=RunStatus.COMPLETED,
-            finished_at=datetime.now(timezone.utc),
-        )
+        # The run is NOT completed here (issue #30): the job handler owns the
+        # final flip, after its post-survey analysis (whitespace detection for
+        # coarse, gap confirmation for zoom) actually finishes.
+        self._note("Survey stages complete — analysis continues")
 
     async def _stage_seeds(
         self,

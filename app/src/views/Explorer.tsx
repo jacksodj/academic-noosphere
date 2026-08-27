@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import Sigma from "sigma";
 import { getReport, getWhitespace, listRuns } from "../endpoints";
 import type { GapReport, ReportCommunity, Run, WhitespaceCandidate } from "../types";
-import { runLabel, workUrl } from "../components";
+import { runLabel, workUrl, pickRun } from "../components";
 import { candidateStat, parseCandidate } from "../whitespace";
 
 interface ThemeColors {
@@ -56,7 +56,7 @@ export default function Explorer() {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const coarseRuns = useMemo(() => (runs ?? []).filter((r) => r.phase === "coarse"), [runs]);
-  const runId = runParam ?? coarseRuns[0]?.run_id ?? null;
+  const runId = pickRun("coarse", runParam, coarseRuns);
 
   useEffect(() => {
     listRuns()

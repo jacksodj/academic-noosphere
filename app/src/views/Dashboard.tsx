@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiConfig } from "../api";
 import { stageProgressLabel } from "../components";
-import { createSurvey, getRunProgress, listRuns, retryRun, subscribeEvents } from "../endpoints";
-import type { Run, RunProgress, StageProgress } from "../types";
+import { createSurvey, getRunProgress, listActiveJobs, listRuns, retryRun, subscribeEvents } from "../endpoints";
+import type { ActiveJob, Run, RunProgress, StageProgress } from "../types";
 
 function fmt(iso: string | null): string {
   return iso
@@ -38,6 +38,10 @@ export default function Dashboard() {
   const [seedQueries, setSeedQueries] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Background jobs that aren't runs (issue #33: ideonomy expansions were
+  // invisible here) — refreshed alongside the run list and on expansion events.
+  const [bgJobs, setBgJobs] = useState<ActiveJob[]>([]);
+
   const refresh = useCallback(() => {
     listRuns()
       .then((rs) => {
@@ -45,6 +49,11 @@ export default function Dashboard() {
         setError(null);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    listActiveJobs()
+      .then((jobs) =>
+        setBgJobs(jobs.filter((j) => j.kind === "expand_gap" || j.kind === "redetect_whitespace")),
+      )
+      .catch(() => setBgJobs([]));
   }, []);
 
   useEffect(() => {
@@ -59,6 +68,12 @@ export default function Dashboard() {
   useEffect(
     () =>
       subscribeEvents((event) => {
+        // Expansion events carry gap_id, not run_id — refresh the background
+        // strip on any of them (queued/ready/failed).
+        if (typeof event.type === "string" && event.type.startsWith("expansion_")) {
+          refresh();
+          return;
+        }
         const runId = typeof event.run_id === "string" ? event.run_id : null;
         if (!runId) return;
         if (event.type === "progress" && event.progress) {
@@ -80,11 +95,13 @@ export default function Dashboard() {
   // Poll fallback: SSE can drop silently (sleep/wake, reconnect gaps) — keep
   // the list honest while anything is active.
   useEffect(() => {
-    const anyActive = (runs ?? []).some((r) => r.status === "running" || r.status === "pending");
+    const anyActive =
+      (runs ?? []).some((r) => r.status === "running" || r.status === "pending") ||
+      bgJobs.length > 0;
     if (!anyActive) return;
     const timer = setInterval(refresh, 30000);
     return () => clearInterval(timer);
-  }, [runs, refresh]);
+  }, [runs, bgJobs, refresh]);
 
   useEffect(() => {
     for (const r of runs ?? []) {
@@ -147,6 +164,25 @@ export default function Dashboard() {
       {apiConfig.mock && <p className="badge mock-badge">mock data (VITE_MOCK=1)</p>}
       {error && <p className="error">{error}</p>}
 
+      {bgJobs.length > 0 && (
+        <div className="card bg-jobs">
+          {bgJobs.map((j) => (
+            <p key={j.job_id} className="muted bg-job-row">
+              <span className="badge status-running">{j.status}</span>{" "}
+              {j.kind === "expand_gap"
+                ? `Ideonomy expansion (attempt ${String(j.payload.attempt ?? "?")}, Opus)`
+                : "Whitespace re-detection"}
+              {" — safe to browse; results land automatically."}{" "}
+              {j.run_id && (
+                <Link className="plain-link" to={`/runs/${j.run_id}`}>
+                  watch activity →
+                </Link>
+              )}
+            </p>
+          ))}
+        </div>
+      )}
+
       {showForm && (
         <form className="card form" onSubmit={submitSurvey}>
           <label>
@@ -165,9 +201,19 @@ export default function Dashboard() {
               onChange={(e) => setSeedQueries(e.target.value)}
               rows={4}
               placeholder={"agent memory architectures\nepisodic memory consolidation"}
+              required
             />
           </label>
-          <button className="primary" type="submit" disabled={submitting || !fieldName.trim()}>
+          <button
+            className="primary"
+            type="submit"
+            disabled={submitting || !fieldName.trim() || !seedQueries.trim()}
+            title={
+              !fieldName.trim() || !seedQueries.trim()
+                ? "A field name and at least one seed query are required"
+                : undefined
+            }
+          >
             {submitting ? "Starting…" : "Start Survey"}
           </button>
         </form>

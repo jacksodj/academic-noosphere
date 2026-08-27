@@ -63,6 +63,12 @@ async def list_runs(request: Request) -> list[Run]:
 @router.post("/surveys")
 async def create_survey(request: Request, req: NewSurveyRequest) -> Run:
     state = _state(request)
+    # Issue #29: a survey with no usable search criteria burns API budget on
+    # nothing — refuse it here too, not only in the form.
+    if not req.field_name.strip():
+        raise HTTPException(422, "field_name must be non-empty")
+    if not [q for q in req.seed_queries if q.strip()]:
+        raise HTTPException(422, "at least one non-empty seed query is required")
     run = Run(
         run_id=str(uuid.uuid4()),
         field_name=req.field_name,
@@ -248,6 +254,35 @@ async def remove_credential(name: str) -> dict[str, Any]:
     return config.credential_status(name)
 
 
+@router.get("/jobs/active")
+async def active_jobs(request: Request, kind: str | None = None) -> list[dict[str, Any]]:
+    """Pending/running background jobs (issue #33: expansion visibility).
+
+    Payloads are parsed so the SPA can label rows (gap_id, attempt, …) without
+    string surgery; checkpoints stay server-side.
+    """
+    jobs = _state(request).sidecar.jobs_active((kind,) if kind else None)
+    out = []
+    for j in jobs:
+        payload = j.get("payload")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except ValueError:
+                payload = {}
+        out.append(
+            {
+                "job_id": j["job_id"],
+                "kind": j["kind"],
+                "status": j["status"],
+                "run_id": j.get("run_id"),
+                "payload": payload,
+                "created_at": j.get("created_at"),
+            }
+        )
+    return out
+
+
 # -- Bedrock catalog + Web Search Gateway setup (issue #28) ------------------
 
 
@@ -357,16 +392,25 @@ async def aws_check(request: Request) -> dict[str, Any]:
 
         return BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 1})
 
+    # A FRESH Session per probe (issue #34): boto3's default session resolves
+    # env credentials once and caches them for the process lifetime, so a
+    # check made after re-pasting refreshed keys kept failing on the old ones.
     def _sts() -> dict[str, Any]:
-        import boto3
+        import boto3.session
 
-        ident = boto3.client("sts", region_name=region, config=_boto_config()).get_caller_identity()
+        session = boto3.session.Session()
+        ident = session.client(
+            "sts", region_name=region, config=_boto_config()
+        ).get_caller_identity()
         return {"account": ident["Account"], "arn": ident["Arn"]}
 
     def _bedrock() -> dict[str, Any]:
-        import boto3
+        import boto3.session
 
-        models = boto3.client("bedrock", region_name=region, config=_boto_config()).list_foundation_models()
+        session = boto3.session.Session()
+        models = session.client(
+            "bedrock", region_name=region, config=_boto_config()
+        ).list_foundation_models()
         return {"models": len(models.get("modelSummaries", []))}
 
     profile = os.environ.get("AWS_PROFILE")

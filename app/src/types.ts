@@ -292,3 +292,13 @@ export interface WebSearchStatus {
   error?: string;
   create: { status: "idle" | "creating" | "done" | "failed"; step: string; gateway_url: string | null; error: string | null };
 }
+
+/** GET /api/jobs/active — pending/running background jobs (expansion visibility). */
+export interface ActiveJob {
+  job_id: string;
+  kind: string;
+  status: "pending" | "running";
+  run_id: string | null;
+  payload: Record<string, unknown>;
+  created_at: string | null;
+}

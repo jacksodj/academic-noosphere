@@ -107,11 +107,25 @@ def _build_handlers(state: AppState) -> dict:
         note_missing_credentials(run.run_id)
         await make_service().run_coarse(run, payload["seed_queries"], checkpoint)
         note_activity(run.run_id, "Detecting whitespace (community structure + thin cells)")
-        # Pure compute over graph reads (Louvain etc.) — off-loop like persist.
-        candidates = await asyncio.to_thread(
-            detect_whitespace, run.run_id, state.graph, state.sidecar
-        )
+        try:
+            # Pure compute over graph reads (Louvain etc.) — off-loop like persist.
+            candidates = await asyncio.to_thread(
+                detect_whitespace, run.run_id, state.graph, state.sidecar
+            )
+        except Exception as exc:
+            note_activity(run.run_id,
+                          f"Whitespace detection failed: {type(exc).__name__}: {exc}")
+            state.sidecar.update_run(run.run_id, status=RunStatus.FAILED)
+            raise
         note_activity(run.run_id, f"Whitespace detection complete: {len(candidates)} candidates")
+        # Only now is the run truly done (issue #30) — the report/triage
+        # content exists the moment the Dashboard says "completed".
+        note_activity(run.run_id, "Survey completed")
+        state.sidecar.update_run(
+            run.run_id,
+            status=RunStatus.COMPLETED,
+            finished_at=datetime.now(timezone.utc),
+        )
         state.bus.publish({"type": "coarse_completed", "run_id": run.run_id,
                            "whitespace_count": len(candidates)})
         state.bus.publish({"type": "spend", "spend": state.meter.totals()})
@@ -135,8 +149,8 @@ def _build_handlers(state: AppState) -> dict:
                 candidate, run.run_id, state.graph, state.sidecar, llm()
             )
         except Exception as exc:
-            # The survey half already marked the run completed; without this the
-            # failure is invisible (blank gaps, candidate stuck "zooming").
+            # Without this the failure is invisible (blank gaps, candidate
+            # stuck "zooming").
             note_activity(run.run_id, f"Gap confirmation failed: {type(exc).__name__}: {exc}")
             candidate.status = "candidate"
             state.sidecar.put_whitespace(candidate)
@@ -145,6 +159,14 @@ def _build_handlers(state: AppState) -> dict:
         note_activity(
             run.run_id,
             f"Candidate {'confirmed — gap recorded' if gap else 'not confirmed'}"
+        )
+        # The pipeline no longer finalizes (issue #30) — completed means the
+        # gap verdict is actually recorded.
+        note_activity(run.run_id, "Survey completed")
+        state.sidecar.update_run(
+            run.run_id,
+            status=RunStatus.COMPLETED,
+            finished_at=datetime.now(timezone.utc),
         )
         state.bus.publish({"type": "zoom_completed", "run_id": run.run_id,
                            "whitespace_id": candidate.whitespace_id,

@@ -33,8 +33,13 @@ class FakeBedrock:
 
 
 def _patch_boto3(monkeypatch, client):
-    fake_boto3 = SimpleNamespace(client=lambda *a, **kw: client)
-    monkeypatch.setitem(__import__("sys").modules, "boto3", fake_boto3)
+    import sys
+
+    session_cls = lambda: SimpleNamespace(client=lambda *a, **kw: client)  # noqa: E731
+    fake_session_mod = SimpleNamespace(Session=session_cls)
+    fake_boto3 = SimpleNamespace(client=lambda *a, **kw: client, session=fake_session_mod)
+    monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+    monkeypatch.setitem(sys.modules, "boto3.session", fake_session_mod)
 
 
 def test_catalog_authorized(monkeypatch):

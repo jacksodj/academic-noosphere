@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { runLabel, workUrl } from "../components";
+import { runLabel, workUrl, pickRun } from "../components";
 import { Link } from "react-router-dom";
 import { getInsights, listRuns } from "../endpoints";
 import type { CorpusInsights, Run } from "../types";
@@ -21,7 +21,7 @@ export default function Insights() {
   const [error, setError] = useState<string | null>(null);
 
   const coarseRuns = useMemo(() => (runs ?? []).filter((r) => r.phase === "coarse"), [runs]);
-  const runId = runParam ?? coarseRuns[0]?.run_id ?? null;
+  const runId = pickRun("coarse", runParam, coarseRuns);
 
   useEffect(() => {
     listRuns()

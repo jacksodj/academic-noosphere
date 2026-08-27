@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CitedText, EvidenceChip, WorkChip } from "../components";
+import { CitedText, EvidenceChip, WorkChip, pickRun } from "../components";
 import {
   expandGap,
+  listActiveJobs,
   getExpansions,
   getReport,
   getReportMarkdown,
@@ -68,6 +69,12 @@ function IdeonomyPanel({ gap, works }: { gap: Gap; works: Record<string, WorkRef
   useEffect(() => {
     if (!open || expansions !== null) return;
     void refreshExpansions();
+    // An expansion queued before this mount (issue #33): resume the waiting UI.
+    listActiveJobs("expand_gap")
+      .then((jobs) => {
+        if (jobs.some((j) => j.payload.gap_id === gap.gap_id)) setBusy(true);
+      })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on open
   }, [open, expansions, gap.gap_id]);
 
@@ -171,6 +178,12 @@ function IdeonomyPanel({ gap, works }: { gap: Gap; works: Record<string, WorkRef
                   : "Expand (Opus)"}
             </button>
           )}
+          {busy && (
+            <p className="muted small">
+              Running — usually well under a minute. Safe to navigate away: the result lands
+              here, on the Dashboard's background strip, and in the run's activity feed.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -193,7 +206,7 @@ export default function Report() {
     () => (runs ?? []).filter((r) => r.phase === "zoom" && r.status === "completed"),
     [runs],
   );
-  const runId = runParam ?? zoomRuns[0]?.run_id ?? null;
+  const runId = pickRun("zoom", runParam, zoomRuns);
 
   // Human labels for the zoom-run picker: candidate topic titles, resolved
   // from the parent coarse runs' whitespace lists.

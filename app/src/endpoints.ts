@@ -18,6 +18,7 @@ import {
   mockWhitespace,
 } from "./mock";
 import type {
+  ActiveJob,
   AwsCheckResult,
   BedrockCatalog,
   EmbeddingModelStatus,
@@ -217,6 +218,11 @@ export function getEmbeddingModel(): Promise<EmbeddingModelStatus> {
 export function startEmbeddingModelDownload(): Promise<EmbeddingModelStatus> {
   if (apiConfig.mock) return mockDelay({ ...mockEmbeddingModel });
   return post<EmbeddingModelStatus>("/api/models/embedding/download", {});
+}
+
+export function listActiveJobs(kind?: string): Promise<ActiveJob[]> {
+  if (apiConfig.mock) return mockDelay([]);
+  return get<ActiveJob[]>(`/api/jobs/active${kind ? `?kind=${kind}` : ""}`);
 }
 
 export function getBedrockCatalog(): Promise<BedrockCatalog> {

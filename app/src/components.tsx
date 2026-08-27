@@ -205,3 +205,37 @@ export function runLabel(r: {
   const status = r.status && r.status !== "completed" ? ` (${r.status})` : "";
   return `${r.field_name} — ${r.run_id.slice(0, 8)}${status}`;
 }
+
+/**
+ * Sticky run selection (issue #31): the chosen run survives tab switches and
+ * reloads. URL param wins (deep links stay shareable), then the remembered
+ * choice if it still exists, then the newest run. localStorage may be
+ * unavailable (private windows) — degrade to newest-run silently.
+ */
+const RUN_MEMORY_KEYS = { coarse: "noosphere.run.coarse", zoom: "noosphere.run.zoom" };
+
+export function pickRun(
+  kind: keyof typeof RUN_MEMORY_KEYS,
+  runParam: string | null,
+  runs: { run_id: string }[],
+): string | null {
+  let remembered: string | null = null;
+  try {
+    remembered = localStorage.getItem(RUN_MEMORY_KEYS[kind]);
+  } catch {
+    /* storage unavailable */
+  }
+  const chosen =
+    runParam ??
+    (remembered && runs.some((r) => r.run_id === remembered) ? remembered : null) ??
+    runs[0]?.run_id ??
+    null;
+  if (chosen) {
+    try {
+      localStorage.setItem(RUN_MEMORY_KEYS[kind], chosen);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  return chosen;
+}

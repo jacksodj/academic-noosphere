@@ -379,7 +379,7 @@ def test_survey_event_published(client: TestClient, state: AppState) -> None:
     queue = state.bus.attach()
     try:
         client.post(
-            "/api/surveys", json={"field_name": "f", "seed_queries": []}
+            "/api/surveys", json={"field_name": "f", "seed_queries": ["q"]}
         ).raise_for_status()
         event = queue.get_nowait()
         assert event["type"] == "run_created"

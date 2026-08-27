@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { runLabel, workUrl } from "../components";
+import { runLabel, workUrl, pickRun } from "../components";
 import { listRuns, listWorks } from "../endpoints";
 import type { Run, WorksPage } from "../types";
 
@@ -25,7 +25,7 @@ export default function Sources() {
   const [draftQ, setDraftQ] = useState(q);
 
   const coarseRuns = useMemo(() => (runs ?? []).filter((r) => r.phase === "coarse"), [runs]);
-  const runId = runParam ?? coarseRuns[0]?.run_id ?? null;
+  const runId = pickRun("coarse", runParam, coarseRuns);
 
   useEffect(() => {
     listRuns()

@@ -48,9 +48,9 @@ def model_catalog_status(region: str, models: dict[str, str]) -> dict:
     supports GetFoundationModelAvailability, else None (fall back to whether
     the id is listed at all). BLOCKING — run via to_thread.
     """
-    import boto3
+    import boto3.session
 
-    bedrock = boto3.client("bedrock", region_name=region, config=_boto_config())
+    bedrock = boto3.session.Session().client("bedrock", region_name=region, config=_boto_config())
     listed_ids: set[str] = set()
     try:
         for p in bedrock.list_inference_profiles().get("inferenceProfileSummaries", []):
@@ -93,9 +93,9 @@ def model_catalog_status(region: str, models: dict[str, str]) -> dict:
 
 def list_websearch_gateways(region: str) -> list[dict]:
     """Existing AgentCore gateways, flagged for a web-search target. BLOCKING."""
-    import boto3
+    import boto3.session
 
-    gw = boto3.client("bedrock-agentcore-control", region_name=region, config=_boto_config())
+    gw = boto3.session.Session().client("bedrock-agentcore-control", region_name=region, config=_boto_config())
     out = []
     for g in gw.list_gateways().get("items", []):
         gid = g.get("gatewayId") or g.get("gatewayIdentifier")
@@ -164,9 +164,10 @@ class GatewayCreate:
             logger.warning("gateway creation failed: %s", e)
 
     def _create(self, region: str) -> str:
-        import boto3
+        import boto3.session
 
-        cfn = boto3.client("cloudformation", region_name=region)
+        session = boto3.session.Session()
+        cfn = session.client("cloudformation", region_name=region)
         try:
             self.step = "creating CloudFormation stack (gateway + role)"
             cfn.create_stack(
@@ -183,7 +184,7 @@ class GatewayCreate:
         }
         gateway_id, gateway_url = outs["GatewayId"], outs["GatewayUrl"]
 
-        gw = boto3.client("bedrock-agentcore-control", region_name=region)
+        gw = session.client("bedrock-agentcore-control", region_name=region)
         targets = gw.list_gateway_targets(gatewayIdentifier=gateway_id).get("items", [])
         if not any((t.get("name") or "") == TARGET_NAME for t in targets):
             self.step = f"attaching web-search connector (pinned {CONNECTOR_VERSION})"

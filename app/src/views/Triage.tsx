@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EvidenceChip, ScoreBar, runLabel } from "../components";
+import { EvidenceChip, ScoreBar, runLabel, pickRun } from "../components";
 import {
   getReport,
   getWhitespace,
@@ -33,7 +33,7 @@ export default function Triage() {
   const [zooming, setZooming] = useState<Set<string>>(new Set());
 
   const coarseRuns = useMemo(() => (runs ?? []).filter((r) => r.phase === "coarse"), [runs]);
-  const runId = runParam ?? coarseRuns[0]?.run_id ?? null;
+  const runId = pickRun("coarse", runParam, coarseRuns);
 
   useEffect(() => {
     listRuns()
@@ -55,15 +55,16 @@ export default function Triage() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [runId]);
 
-  // Best-effort tooltip enrichment: pull work titles from the report of any
-  // completed child zoom run (the report's `works` citation table).
+  // Tooltip enrichment: the coarse run's own report now indexes every
+  // candidate's evidence works (issue #32); child zoom reports add theirs.
   useEffect(() => {
     if (!runId || !runs) return;
     const zoomRuns = runs.filter(
       (r) => r.phase === "zoom" && r.parent_run_id === runId && r.status === "completed",
     );
+    const reportRuns = [{ run_id: runId }, ...zoomRuns];
     let cancelled = false;
-    Promise.allSettled(zoomRuns.map((r) => getReport(r.run_id))).then((results) => {
+    Promise.allSettled(reportRuns.map((r) => getReport(r.run_id))).then((results) => {
       if (cancelled) return;
       const merged: Record<string, WorkRef> = {};
       for (const res of results) {

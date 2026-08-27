@@ -239,8 +239,9 @@ async def test_coarse_happy_path(sidecar: Sidecar, graph: GraphStore) -> None:
 
     stored = sidecar.get_run("run-1")
     assert stored is not None
-    assert stored.status is RunStatus.COMPLETED
-    assert stored.started_at is not None and stored.finished_at is not None
+    assert stored.status is RunStatus.RUNNING  # handler finalizes (issue #30)
+    assert stored.started_at is not None
+    assert stored.finished_at is None  # handler stamps it at true completion (issue #30)
 
     state = checkpoint.get()
     assert state is not None
@@ -262,7 +263,7 @@ async def test_resume_skips_seeds_stage(sidecar: Sidecar, graph: GraphStore) -> 
     assert fake.search_calls == []  # SEEDS was skipped; no search re-issued
     assert ["W1"] in fake.batch_calls  # rehydrated via works_batch instead
     assert sidecar.get_run_works("run-1") == ["W1"]
-    assert sidecar.get_run("run-1").status is RunStatus.COMPLETED
+    assert sidecar.get_run("run-1").status is RunStatus.RUNNING  # handler finalizes (issue #30)
 
 
 async def test_relevance_keeps_zero_citation_work(
@@ -430,7 +431,7 @@ async def test_zoom_seeds_from_evidence_and_description_no_cap(
     assert graph.work_ids() == {"W1", "W2", "W6"}
     [stored] = sidecar.list_whitespace("run-coarse")
     assert stored.status == "zooming"
-    assert sidecar.get_run("run-zoom").status is RunStatus.COMPLETED
+    assert sidecar.get_run("run-zoom").status is RunStatus.RUNNING  # handler finalizes (issue #30)
 
 
 # -- embedding/similarity helpers ---------------------------------------------
@@ -549,7 +550,7 @@ async def test_activities_emitted_through_pipeline(
     text = "\n".join(msg for _, msg in lines)
     assert "Survey started" in text
     assert "OpenAlex search 'q1'" in text
-    assert "Survey completed" in text
+    assert "Survey stages complete" in text  # handler emits the final "completed" (issue #30)
     # stages announce themselves in order
     stages = [m for _, m in lines if "stage complete" in m or "Relevance filter" in m]
     assert len(stages) >= 3

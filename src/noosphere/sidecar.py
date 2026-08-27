@@ -331,6 +331,17 @@ class Sidecar:
         ).fetchone()
         return self._job_from_row(row) if row is not None else None
 
+    def jobs_active(self, kinds: tuple[str, ...] | None = None) -> list[dict]:
+        """Pending/running jobs, optionally filtered by kind — background-work
+        visibility in the UI (issue #33)."""
+        sql = "SELECT * FROM jobs WHERE status IN (?, ?)"
+        params: list = list(_JOB_PENDING_STATUSES)
+        if kinds:
+            sql += f" AND kind IN ({', '.join('?' * len(kinds))})"
+            params += list(kinds)
+        rows = self._con.execute(sql + " ORDER BY seq DESC", params).fetchall()
+        return [self._job_from_row(r) for r in rows]
+
     def jobs_pending(self) -> list[dict]:
         rows = self._con.execute(
             "SELECT * FROM jobs WHERE status IN (?, ?) ORDER BY seq",
