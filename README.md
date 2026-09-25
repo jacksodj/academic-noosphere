@@ -54,3 +54,11 @@ The wayfinder map remains the decision record:
 
 See [`docs/reference-notes.md`](docs/reference-notes.md) for the condensed reference
 material every planning ticket should be read against.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). The vendored ideonomy method catalog under
+`vendor/ideonomy/` is CC-BY-4.0 (Grace Kind, Patrick Gunkel, and the
+ideonomy-skill contributors) — see [`vendor/ideonomy/LICENSE`](vendor/ideonomy/LICENSE).
+The ONNX SPECTER2 artifact on Hugging Face is derived from
+`allenai/specter2_base` (Apache-2.0).

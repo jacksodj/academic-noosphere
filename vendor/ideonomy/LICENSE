@@ -1,0 +1,14 @@
+The method files in this directory (operators/, organons/, dimension-prompts/)
+are vendored unmodified from latentwill/ideonomy-skill
+(https://github.com/latentwill/ideonomy-skill), at the upstream commit recorded
+in ./UPSTREAM.
+
+Upstream licenses this prose under the Creative Commons Attribution 4.0
+International License (CC-BY-4.0). It adapts and extends Grace Kind's essays on
+ideonomy (https://gracekind.net/writing/ideonomy/), which build on the work of
+Patrick Gunkel, originator of ideonomy.
+
+Attribution: Grace Kind, Patrick Gunkel, and the contributors of
+ideonomy-skill. No changes have been made to these files beyond copying them.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/legalcode

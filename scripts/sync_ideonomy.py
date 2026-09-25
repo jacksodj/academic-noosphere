@@ -61,9 +61,15 @@ def sync(source: Path, dest: Path) -> dict[str, int]:
     methods = find_methods_dir(source)
     commit = upstream_commit(source)
 
+    # Our CC-BY attribution notice is local, not upstream — carry it across.
+    license_path = dest / "LICENSE"
+    license_text = license_path.read_text() if license_path.is_file() else None
+
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
+    if license_text is not None:
+        license_path.write_text(license_text)
 
     counts: dict[str, int] = {}
     for section in SECTIONS:
