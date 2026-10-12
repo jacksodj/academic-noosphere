@@ -86,4 +86,4 @@ Phase-0 spike (#7, `scripts/phase0_infra.py` + `scripts/phase0_spike.py`) runs
 as a config-toggle input for Web Search narrative mining. Remaining fog items
 on the map are implementation-time detail.
 
-Vocabulary: see `CONTEXT.md`. Source-document constraints: `docs/reference-notes.md`.
+Vocabulary: see `docs/CONTEXT.md`. Source-document constraints: `docs/reference-notes.md`.

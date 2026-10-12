@@ -8,7 +8,7 @@ Ground rules for every build agent:
 - All deps you need are already declared in `pyproject.toml` (groups:
   `embed`, `websearch` optional; dev group has pytest/pytest-asyncio/respx).
   Run tests with `uv run --group dev pytest tests/test_<yours>.py -q`.
-- Import domain types from `noosphere.models` (terms match `CONTEXT.md`).
+- Import domain types from `noosphere.models` (terms match `docs/CONTEXT.md`).
 - Grounding rule: nothing from Web Search results is ever persisted except
   identifiers; every persisted record carries Provenance.
 - Type-hint everything; no comments that narrate the obvious.

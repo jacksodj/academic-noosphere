@@ -270,7 +270,7 @@ From an empty repo to a working Mac app with a real survey finished took less th
 
 Two things made that pace possible, and you can reuse both:
 
-- **Decisions live on the issue tracker, not in anyone's head.** Issue #1 is a "wayfinder map," and every architectural question became its own ticket with explicit `Blocked by:` lines, decided and closed with a written resolution before any code existed. [`docs/architecture.md`](https://github.com/jacksodj/academic-noosphere/blob/main/docs/architecture.md) is the spec assembled from those tickets, and [`CONTEXT.md`](https://github.com/jacksodj/academic-noosphere/blob/main/CONTEXT.md) is the glossary. If you want to know *why* something works the way it does, the answer is in a closed ticket.
+- **Decisions live on the issue tracker, not in anyone's head.** Issue #1 is a "wayfinder map," and every architectural question became its own ticket with explicit `Blocked by:` lines, decided and closed with a written resolution before any code existed. [`docs/architecture.md`](https://github.com/jacksodj/academic-noosphere/blob/main/docs/architecture.md) is the spec assembled from those tickets, and [`docs/CONTEXT.md`](https://github.com/jacksodj/academic-noosphere/blob/main/docs/CONTEXT.md) is the glossary. If you want to know *why* something works the way it does, the answer is in a closed ticket.
 - **Claude agents did the building, in parallel, from that spec.** Build contracts first, then independent modules built at the same time, then integration. Every commit is co-authored by Claude. Which means a customization is just another ticket: write down the decision and point an agent at it.
 
 If you're customizing, here are the seams:
