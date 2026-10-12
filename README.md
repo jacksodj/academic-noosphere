@@ -37,9 +37,21 @@ walkthrough, and troubleshooting — live in
 The wayfinder map remains the decision record:
 
 - **Map**: [Wayfinder map: Academic Noosphere — Mac-local research mapping app](https://github.com/jacksodj/academic-noosphere/issues/1)
+  (v1, closed; its decisions still bind)
+- **Current map (v1.1)**: [Wayfinder map: Academic Noosphere v1.1 — multi-field growth, seed-paper surveys, local performance](https://github.com/jacksodj/academic-noosphere/issues/21)
 - Open decision tickets are the map's child issues. A ticket is on the **frontier**
   when it is open, unassigned, and everything on its `Blocked by:` line is closed.
 - Work a ticket by invoking `/wayfinder` with the map URL (mattpocock-skills plugin).
+
+## Setup and contributing
+
+After cloning, run `scripts/setup-hooks.sh` to turn on the secret-scanning git hooks.
+
+Changes reach `main` through pull requests. The `PR checks` workflow runs three
+jobs on every PR: `tests` (the Python test suite and the SPA type-check and
+build), `secrets` (gitleaks), and `vulnerabilities` (bandit and `npm audit`).
+Agent instructions (layout, commands, hard rules, conventions) live in
+[`AGENTS.md`](AGENTS.md); the glossary is [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
 ## Core architectural constraints (from the reference docs)
 

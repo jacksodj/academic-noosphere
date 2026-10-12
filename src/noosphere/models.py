@@ -1,4 +1,4 @@
-"""Domain models — the shared vocabulary in code. Terms match CONTEXT.md exactly.
+"""Domain models — the shared vocabulary in code. Terms match docs/CONTEXT.md exactly.
 
 Provenance rule (#9): everything persisted carries source_api / source_id /
 retrieved_at. Author identity is only ever an OpenAlex author ID.

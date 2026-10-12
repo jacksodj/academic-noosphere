@@ -32,3 +32,7 @@ security-scan/
 # Frozen sidecar build output (ticket #22)
 app/src-tauri/sidecar/
 packaging/build/
+
+# Claude Code: per-user settings and session worktrees
+.claude/settings.local.json
+.claude/worktrees/
